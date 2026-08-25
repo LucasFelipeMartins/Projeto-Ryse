@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "icons": "node scripts/generate-icons.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "admin": "node scripts/admin.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

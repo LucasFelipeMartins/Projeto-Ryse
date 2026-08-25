@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { useActionState, useId, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import {
@@ -157,19 +156,32 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
 
 /* ------------------------------------------------------------------ LOGIN */
 
-export function SignInForm() {
-  const params = useSearchParams();
-  const next = params.get('proximo') ?? '';
+/** Mensagens dos retornos de e-mail que chegam via ?erro= */
+const LINK_ERRORS: Record<string, string> = {
+  link_invalido: 'Esse link não é válido. Peça um novo e-mail.',
+  link_expirado: 'O link expirou. Peça uma nova redefinição de senha.',
+};
+
+export function SignInForm({
+  proximo = '',
+  erro,
+}: {
+  proximo?: string;
+  erro?: string;
+}) {
   const [state, action] = useActionState<AuthState, FormData>(signIn, {});
+  const linkError = erro ? LINK_ERRORS[erro] : undefined;
 
   return (
     <>
       <Header title="Entrar" subtitle="Acesse seu plano de nutrição, treino e exames." />
 
-      {state.error && <Alert kind="error">{state.error}</Alert>}
+      {(state.error || linkError) && (
+        <Alert kind="error">{state.error ?? linkError}</Alert>
+      )}
 
       <form action={action} className="space-y-4">
-        <input type="hidden" name="proximo" value={next} />
+        <input type="hidden" name="proximo" value={proximo} />
 
         <TextField
           label="E-mail"
