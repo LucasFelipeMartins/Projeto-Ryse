@@ -62,21 +62,43 @@ O app depende só da interface `DocumentAnalyzer`. As instruções clínicas mor
 em `lib/ai/analyzer.ts`, fora de qualquer implementação — trocar de fornecedor
 não significa reescrever as regras.
 
-**Estado atual:** `lib/ai/openai.ts` é um esqueleto com TODO. Sem
-`OPENAI_API_KEY`, `getAnalyzer()` devolve `null` e o documento fica em
-`aguardando_analise` — as camadas 1 a 3 seguem funcionando normalmente.
-
-Para ligar:
+**Estado atual:** `lib/ai/openai.ts` está implementado. Basta a chave:
 
 ```bash
-npm install openai
-echo "OPENAI_API_KEY=sk-..." >> .env.local   # sem NEXT_PUBLIC_
+echo "OPENAI_API_KEY=sk-..." >> .env.local   # nunca com NEXT_PUBLIC_
 ```
 
-E preencher `triage()` e `analyze()`. Os parsers defensivos (`parseTriage`,
-`parseAnalysis`) já estão prontos: validam a resposta antes de gravar, e o
-default de `accepted` é `false` — resposta quebrada recusa o documento em vez
-de deixá-lo passar sem checagem.
+Sem a chave, `getAnalyzer()` devolve `null` e o documento fica em
+`aguardando_analise` — as camadas 1 a 3 seguem funcionando normalmente.
+
+Modelos, ambos `gpt-4o-mini` por padrão:
+
+| Variável | Padrão | Papel |
+|---|---|---|
+| `OPENAI_TRIAGE_MODEL` | `gpt-4o-mini` | Chamada curta: é um exame? |
+| `OPENAI_ANALYSIS_MODEL` | `gpt-4o-mini` | Extrai os marcadores |
+
+PDF vai como texto (já extraído na camada 3 — muito mais barato que mandar
+páginas como imagem); foto vai como `image_url` em base64, usando visão.
+`temperature: 0` e `response_format: json_object`, porque transcrever laudo
+não é tarefa criativa.
+
+**Custo:** cerca de US$ 0,002 por documento com `gpt-4o-mini` — algo como
+R$ 0,01. Não existe API do ChatGPT gratuita; o que há é um crédito inicial
+pequeno em contas novas.
+
+### Nada é truncado em silêncio
+
+Acima de 120 mil caracteres o analisador lança `DocumentTooLargeError` em vez
+de cortar o texto. Um laudo truncado no meio produziria extração errada, que é
+pior que erro nenhum.
+
+### Parsers defensivos
+
+`parseTriage` e `parseAnalysis` validam a resposta antes de qualquer gravação.
+O default de `accepted` é `false`: JSON quebrado, texto solto, `kind`
+inventado ou resposta vazia recusam o documento. E se o modelo se contradiz
+(`kind: "nao_relacionado"` com `accepted: true`), a recusa prevalece.
 
 ## Privacidade
 
@@ -95,3 +117,17 @@ As camadas 2 e 3 são funções puras, testadas com bytes reais durante o
 desenvolvimento: JPEG renomeado para `.pdf`, executável disfarçado, ZIP, PDF
 com senha, PDF de 60 páginas, nota fiscal, contrato, ata de condomínio e
 receita culinária — todos recusados; laudo laboratorial aceito.
+
+Os parsers da camada 4 também: JSON quebrado, texto solto, `kind` inventado,
+`accepted` como string, objeto vazio e resposta nula — todos recusam.
+
+O que **não** foi testado contra a API real: as chamadas em si. Isso depende
+de uma chave e de um documento de verdade.
+
+## Privacidade e camadas gratuitas
+
+O nível gratuito de alguns provedores (o do Google AI Studio, por exemplo)
+permite que as entradas sejam usadas para treinar os modelos. Para exames de
+paciente isso é incompatível com o que o app promete na LGPD.
+
+Use nível pago para dado real; nível gratuito só com documentos fictícios.

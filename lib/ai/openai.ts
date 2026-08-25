@@ -1,6 +1,6 @@
 import 'server-only';
+import OpenAI from 'openai';
 import {
-  AnalyzerNotConfiguredError,
   ANALYSIS_INSTRUCTIONS,
   TRIAGE_INSTRUCTIONS,
   type AnalysisResult,
@@ -10,59 +10,117 @@ import {
 } from '@/lib/ai/analyzer';
 
 /**
- * Implementação com a API da OpenAI.
+ * Análise de documentos com a API da OpenAI.
  *
- * ┌─────────────────────────────────────────────────────────────────────────┐
- * │ TODO — ainda não implementado.                                          │
- * │                                                                         │
- * │ Passos para ligar:                                                      │
- * │   1. npm install openai                                                 │
- * │   2. OPENAI_API_KEY=sk-... no .env.local (sem NEXT_PUBLIC_)             │
- * │   3. Preencher triage() e analyze() abaixo                              │
- * │                                                                         │
- * │ Enquanto isso, `getAnalyzer()` devolve null e o app segue funcionando:  │
- * │ o upload e as validações determinísticas rodam normalmente, e o         │
- * │ documento fica com status `aguardando_analise`.                         │
- * └─────────────────────────────────────────────────────────────────────────┘
+ * Dois modelos, configuráveis por variável de ambiente:
+ *   - triagem  — chamada curta e barata, decide se o documento é um exame;
+ *   - análise  — só roda se a triagem aceitou.
  *
- * Esboço da chamada, para referência:
- *
- *   import OpenAI from 'openai';
- *   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
- *
- *   const response = await client.chat.completions.create({
- *     model: 'gpt-4o',
- *     response_format: { type: 'json_object' },
- *     messages: [
- *       { role: 'system', content: TRIAGE_INSTRUCTIONS },
- *       {
- *         role: 'user',
- *         content: [
- *           { type: 'text', text: `Arquivo: ${input.filename}` },
- *           // PDF  -> mande input.text (já extraído, mais barato)
- *           // imagem -> { type: 'image_url', image_url: { url: dataUrl } }
- *         ],
- *       },
- *     ],
- *   });
- *
- *   return parseTriage(response.choices[0].message.content);
- *
- * Duas coisas a não esquecer ao implementar:
- *   - a chave NUNCA leva o prefixo NEXT_PUBLIC_ (iria para o navegador);
- *   - valide a resposta com `parseTriage` / `parseAnalysis` antes de gravar —
- *     o modelo pode devolver JSON fora do formato combinado.
+ * `gpt-4o-mini` dá conta das duas e custa cerca de US$ 0,002 por documento.
+ * Para extrair valores de laudos mais bagunçados, subir a análise para
+ * `gpt-4o` costuma valer a pena.
  */
+
+const TRIAGE_MODEL = process.env.OPENAI_TRIAGE_MODEL ?? 'gpt-4o-mini';
+const ANALYSIS_MODEL = process.env.OPENAI_ANALYSIS_MODEL ?? 'gpt-4o-mini';
+
+/**
+ * Teto do texto enviado. Um laudo de 30 páginas raramente passa de 60 mil
+ * caracteres; acima disso, recusamos em vez de cortar em silêncio — um exame
+ * truncado no meio produziria extração errada, que é pior que erro nenhum.
+ */
+const MAX_TEXT_CHARS = 120_000;
+
+export class DocumentTooLargeError extends Error {
+  constructor() {
+    super('Documento longo demais para análise automática.');
+    this.name = 'DocumentTooLargeError';
+  }
+}
+
+function client() {
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    // Documento grande com visão pode passar de 30 s.
+    timeout: 90_000,
+    maxRetries: 2,
+  });
+}
+
+/**
+ * Monta o conteúdo da mensagem.
+ *
+ * PDF vai como texto já extraído (`unpdf` fez isso na camada 3) — é muito
+ * mais barato que mandar as páginas como imagem. Foto vai como data URL,
+ * usando a capacidade de visão do modelo.
+ */
+function buildContent(
+  input: AnalyzerInput,
+): OpenAI.Chat.Completions.ChatCompletionContentPart[] {
+  const header = `Arquivo enviado pelo paciente: ${input.filename}`;
+
+  if (input.mime === 'application/pdf') {
+    const text = (input.text ?? '').trim();
+
+    if (!text) {
+      // PDF escaneado: sem camada de texto, não há o que mandar como texto.
+      // A imagem das páginas exigiria rasterizar — fora do escopo por ora.
+      return [
+        {
+          type: 'text',
+          text: `${header}\n\n[PDF sem camada de texto — provavelmente digitalizado. Classifique como não relacionado e peça uma foto legível.]`,
+        },
+      ];
+    }
+
+    if (text.length > MAX_TEXT_CHARS) throw new DocumentTooLargeError();
+
+    return [{ type: 'text', text: `${header}\n\nConteúdo:\n\n${text}` }];
+  }
+
+  const base64 = Buffer.from(input.bytes).toString('base64');
+
+  return [
+    { type: 'text', text: header },
+    {
+      type: 'image_url',
+      image_url: { url: `data:${input.mime};base64,${base64}`, detail: 'high' },
+    },
+  ];
+}
+
+async function ask(model: string, system: string, input: AnalyzerInput) {
+  const response = await client().chat.completions.create({
+    model,
+    // Força JSON válido: sem isso o modelo às vezes embrulha em ```json.
+    response_format: { type: 'json_object' },
+    // Extração de laudo não é tarefa criativa.
+    temperature: 0,
+    max_tokens: 4096,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: buildContent(input) },
+    ],
+  });
+
+  return response.choices[0]?.message?.content ?? null;
+}
+
 export function createOpenAiAnalyzer(): DocumentAnalyzer {
   return {
     provider: 'openai',
 
-    async triage(_input: AnalyzerInput): Promise<TriageResult> {
-      throw new AnalyzerNotConfiguredError();
+    async triage(input: AnalyzerInput): Promise<TriageResult> {
+      return parseTriage(await ask(TRIAGE_MODEL, TRIAGE_INSTRUCTIONS, input));
     },
 
-    async analyze(_input: AnalyzerInput): Promise<AnalysisResult> {
-      throw new AnalyzerNotConfiguredError();
+    async analyze(input: AnalyzerInput): Promise<AnalysisResult> {
+      const parsed = parseAnalysis(await ask(ANALYSIS_MODEL, ANALYSIS_INSTRUCTIONS, input));
+
+      if (!parsed) {
+        throw new Error('Resposta da análise fora do formato esperado.');
+      }
+      return parsed;
     },
   };
 }
@@ -115,6 +173,8 @@ export function parseTriage(raw: string | null): TriageResult {
   }
 }
 
+type ExtractedStatus = 'ok' | 'atencao' | 'alterado' | 'indeterminado';
+
 export function parseAnalysis(raw: string | null): AnalysisResult | null {
   if (!raw) return null;
 
@@ -126,11 +186,15 @@ export function parseAnalysis(raw: string | null): AnalysisResult | null {
 
     return {
       summary: parsed.summary.trim(),
-      collectedOn: typeof parsed.collectedOn === 'string' ? parsed.collectedOn : null,
-      lab: typeof parsed.lab === 'string' ? parsed.lab : null,
+      collectedOn:
+        typeof parsed.collectedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.collectedOn)
+          ? parsed.collectedOn
+          : null,
+      lab: typeof parsed.lab === 'string' ? parsed.lab.slice(0, 120) : null,
       markers: Array.isArray(parsed.markers)
         ? parsed.markers
             .filter((m) => m && typeof m.name === 'string' && typeof m.value === 'string')
+            .slice(0, 80)
             .map((m) => ({
               name: String(m.name).slice(0, 120),
               value: String(m.value).slice(0, 60),
@@ -150,5 +214,3 @@ export function parseAnalysis(raw: string | null): AnalysisResult | null {
     return null;
   }
 }
-
-type ExtractedStatus = 'ok' | 'atencao' | 'alterado' | 'indeterminado';
