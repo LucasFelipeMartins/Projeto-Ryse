@@ -10,6 +10,7 @@
  *   node scripts/admin.mjs listar
  *   node scripts/admin.mjs promover  medico@clinica.com
  *   node scripts/admin.mjs vincular  paciente@email.com  medico@clinica.com
+ *   node scripts/admin.mjs criar-profissional medico@clinica.com
  */
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
@@ -179,11 +180,102 @@ async function vincular(patientEmail, proEmail) {
   ok(`${patient.full_name} vinculado a ${pro.full_name}.`);
 }
 
+/**
+ * Cria a conta do profissional, já confirmada, e vincula os pacientes
+ * existentes a ela.
+ *
+ * A criação passa pela API de admin porque o cadastro público sempre nasce
+ * como paciente (é o trigger handle_new_user quem decide) e porque o projeto
+ * exige confirmação de e-mail — que aqui é dispensada.
+ */
+async function criarProfissional(email, senha) {
+  if (!email) {
+    fail('Uso: node scripts/admin.mjs criar-profissional medico@email.com [senha]');
+  }
+
+  const password = senha || 'RysePro' + Math.random().toString(36).slice(2, 8) + '!';
+
+  // 1. conta no auth, já confirmada
+  const created = await db.auth.admin.createUser({
+    email: email.toLowerCase(),
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: 'Dr. Rafael Mendes' },
+  });
+
+  let userId = created.data?.user?.id;
+
+  if (created.error) {
+    if (!/already/i.test(created.error.message)) fail(created.error.message);
+
+    // Já existia: reaproveita e apenas garante a senha e a confirmação.
+    const existing = await findByEmail(email);
+    if (!existing) fail('Conta existe no auth mas não tem perfil. Apague-a no painel.');
+    userId = existing.id;
+    await db.auth.admin.updateUserById(userId, { password, email_confirm: true });
+    ok(`Conta já existia — senha redefinida.`);
+  } else {
+    ok(`Conta criada: ${email}`);
+  }
+
+  // 2. papel de profissional
+  const { error: upErr } = await db
+    .from('profiles')
+    .update({
+      role: 'profissional',
+      specialty: 'Nutrólogo e médico do esporte',
+      crm: 'CRM-SP 148.209',
+      professional_id: null,
+    })
+    .eq('id', userId);
+
+  if (upErr) fail(upErr.message);
+  ok('Perfil promovido a profissional.');
+
+  // 3. vincula todos os pacientes soltos
+  const { data: soltos } = await db
+    .from('profiles')
+    .select('id, full_name')
+    .eq('role', 'paciente')
+    .is('professional_id', null);
+
+  if (soltos?.length) {
+    await db
+      .from('profiles')
+      .update({ professional_id: userId })
+      .in('id', soltos.map((p) => p.id));
+
+    for (const paciente of soltos) {
+      await db
+        .from('conversations')
+        .upsert(
+          { patient_id: paciente.id, professional_id: userId },
+          { onConflict: 'patient_id,professional_id' },
+        );
+    }
+
+    ok(`${soltos.length} paciente(s) vinculado(s): ${soltos.map((p) => p.full_name).join(', ')}`);
+  } else {
+    console.log('  (nenhum paciente solto para vincular)');
+  }
+
+  console.log(`
+─────────────────────────────────────────────
+  Entre em /entrar com:
+
+    e-mail: ${email}
+    senha:  ${password}
+
+  Você cai direto em /pro.
+─────────────────────────────────────────────
+`);
+}
+
 /* ------------------------------------------------------------------ MAIN */
 
 const [command, ...args] = process.argv.slice(2);
 
-const commands = { status, listar, promover, vincular };
+const commands = { status, listar, promover, vincular, 'criar-profissional': criarProfissional };
 
 if (!command || !commands[command]) {
   console.log(`
@@ -193,6 +285,10 @@ Comandos disponíveis:
   listar                          lista as contas cadastradas
   promover  <email>               torna a conta um profissional
   vincular  <paciente> <medico>   liga um paciente ao profissional
+
+  criar-profissional <email> [senha]
+      cria a conta do profissional já confirmada, promove e vincula
+      todos os pacientes que ainda não têm profissional
 `);
   process.exit(command ? 1 : 0);
 }
