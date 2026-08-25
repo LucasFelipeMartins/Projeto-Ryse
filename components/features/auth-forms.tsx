@@ -160,6 +160,8 @@ function Header({ title, subtitle }: { title: string; subtitle: string }) {
 const LINK_ERRORS: Record<string, string> = {
   link_invalido: 'Esse link não é válido. Peça um novo e-mail.',
   link_expirado: 'O link expirou. Peça uma nova redefinição de senha.',
+  perfil_ausente:
+    'Sua conta existe, mas o perfil não foi encontrado. Entre novamente — se persistir, fale com a clínica.',
 };
 
 export function SignInForm({

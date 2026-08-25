@@ -13,19 +13,8 @@ const PUBLIC_PREFIXES = [
   '/configurar',
 ];
 
-/**
- * Telas de entrada que não fazem sentido para quem já está autenticado.
- *
- * `/auth/*` e `/nova-senha` ficam de fora de propósito: são endpoints do
- * fluxo de e-mail e precisam rodar mesmo com sessão ativa. `/offline` também
- * — é a casca que o service worker serve quando a rede cai.
- */
-const ENTRY_PAGES = ['/entrar', '/cadastrar', '/recuperar-senha'];
-
-const matches = (list: string[], pathname: string) =>
-  list.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
-const isPublic = (pathname: string) => matches(PUBLIC_PREFIXES, pathname);
+const isPublic = (pathname: string) =>
+  PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 /**
  * Renova a sessão a cada request e decide quem entra onde.
@@ -76,13 +65,13 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  // Já autenticado não precisa ver login nem cadastro.
-  if (user && matches(ENTRY_PAGES, pathname)) {
-    const home = request.nextUrl.clone();
-    home.pathname = '/';
-    home.search = '';
-    return NextResponse.redirect(home);
-  }
-
+  /*
+    Mandar quem já tem sessão para fora do /entrar era feito aqui, e isso
+    criava um laço: o middleware considera "logado" quem tem usuário no
+    auth, enquanto o app exige usuário E perfil. Com um sem o outro, um
+    lado mandava para /entrar e o outro devolvia para /. Agora a checagem
+    mora nas próprias páginas de entrada, com a mesma definição do resto
+    do app.
+  */
   return response;
 }

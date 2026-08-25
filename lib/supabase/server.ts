@@ -112,8 +112,23 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
 export async function requireUser(): Promise<SessionUser> {
   if (!isSupabaseConfigured()) redirect('/configurar');
 
+  const supabase = await createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+
+  if (!authUser) redirect('/entrar');
+
   const user = await getSessionUser();
-  if (!user) redirect('/entrar');
+
+  /*
+    Há sessão no auth mas não há perfil — o gatilho handle_new_user não
+    rodou, ou a linha foi apagada. Mandar para /entrar não resolveria: o
+    cookie continua válido, e o app voltaria para cá em laço. A saída é
+    encerrar a sessão de fato, o que só um Route Handler consegue fazer.
+  */
+  if (!user) redirect('/auth/sair?motivo=perfil_ausente');
+
   return user;
 }
 
