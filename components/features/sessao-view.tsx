@@ -1,54 +1,99 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Check, ChevronLeft, Pause, Play, RotateCcw, Timer, Trophy } from 'lucide-react';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { Check, ChevronLeft, Loader2, Pause, Play, Timer, Trophy } from 'lucide-react';
 import { Badge, Button, Card, Progress } from '@/components/ui';
 import { Sheet } from '@/components/ui/interactive';
-import { workoutToday } from '@/lib/data';
+import { finishSession, logSet, startSession } from '@/lib/actions/patient';
+import type { WorkoutView } from '@/lib/queries/patient';
 import { cn } from '@/lib/utils';
 
-type SetLog = { done: boolean; load: string; reps: string };
+type SetState = { done: boolean; load: string; reps: string };
 
-const buildLogs = () =>
-  workoutToday.exercises.map((ex) =>
+const buildSets = (workout: WorkoutView): SetState[][] =>
+  workout.exercises.map((ex) =>
     Array.from({ length: ex.sets }, () => ({
       done: false,
-      load: ex.load.replace(' kg', ''),
+      load: ex.load.replace(/[^\d.,]/g, ''),
       reps: ex.reps.split('-')[0],
     })),
   );
 
-export function SessaoView() {
+export function SessaoView({ workout }: { workout: WorkoutView }) {
   const router = useRouter();
-  const [logs, setLogs] = useState<SetLog[][]>(buildLogs);
+  const [sets, setSets] = useState<SetState[][]>(() => buildSets(workout));
   const [current, setCurrent] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(true);
   const [finished, setFinished] = useState(false);
+  const [saving, startSaving] = useTransition();
 
-  // Cronômetro da sessão.
+  // Sessão criada na montagem: sem ela não há onde gravar as séries.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const opened = useRef(false);
+
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+
+    startSession(workout.id).then((result) => {
+      if (result.ok) setSessionId(result.sessionId);
+      else setSessionError(result.error);
+    });
+  }, [workout.id]);
+
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(id);
   }, [running]);
 
-  const exercise = workoutToday.exercises[current];
-  const totalSets = logs.flat().length;
-  const doneSets = logs.flat().filter((s) => s.done).length;
-  const progress = (doneSets / totalSets) * 100;
+  const exercise = workout.exercises[current];
+  const flat = sets.flat();
+  const doneSets = flat.filter((s) => s.done).length;
+  const progress = flat.length ? (doneSets / flat.length) * 100 : 0;
 
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(
     seconds % 60,
   ).padStart(2, '0')}`;
 
-  const update = (setIdx: number, patch: Partial<SetLog>) =>
-    setLogs((prev) =>
-      prev.map((sets, i) =>
-        i === current ? sets.map((s, j) => (j === setIdx ? { ...s, ...patch } : s)) : sets,
+  const update = (setIdx: number, patch: Partial<SetState>) => {
+    setSets((prev) =>
+      prev.map((list, i) =>
+        i === current ? list.map((s, j) => (j === setIdx ? { ...s, ...patch } : s)) : list,
       ),
     );
+  };
+
+  /** Só grava no banco quando a série é concluída. */
+  const persist = (setIdx: number, next: SetState) => {
+    if (!sessionId) return;
+    void logSet({
+      sessionId,
+      exerciseId: exercise.id,
+      setNumber: setIdx + 1,
+      loadKg: next.load ? Number(next.load.replace(',', '.')) : null,
+      reps: next.reps ? Number(next.reps) : null,
+      done: next.done,
+    });
+  };
+
+  const toggleSet = (setIdx: number) => {
+    const currentSet = sets[current][setIdx];
+    const next = { ...currentSet, done: !currentSet.done };
+    update(setIdx, { done: next.done });
+    persist(setIdx, next);
+  };
+
+  const onFinish = () => {
+    startSaving(async () => {
+      if (sessionId) await finishSession(sessionId, seconds);
+      setFinished(true);
+      setRunning(false);
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -65,10 +110,10 @@ export function SessaoView() {
 
           <div className="min-w-0 flex-1">
             <p className="text-2xs font-bold uppercase tracking-wider text-subtle">
-              Ficha {workoutToday.letter} · {workoutToday.focus}
+              Ficha {workout.letter} · {workout.focus}
             </p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums">
-              {doneSets} de {totalSets} séries
+              {doneSets} de {flat.length} séries
             </p>
           </div>
 
@@ -82,21 +127,23 @@ export function SessaoView() {
             aria-label={running ? 'Pausar cronômetro' : 'Retomar cronômetro'}
             className="tap flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-brand-on"
           >
-            {running ? (
-              <Pause className="h-4 w-4" aria-hidden />
-            ) : (
-              <Play className="h-4 w-4" aria-hidden />
-            )}
+            {running ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
           </button>
         </div>
 
         <Progress value={progress} className="mt-3" label="Progresso da sessão" />
+
+        {sessionError && (
+          <p role="alert" className="mt-2 text-sm font-medium text-danger">
+            {sessionError} As séries não serão salvas.
+          </p>
+        )}
       </Card>
 
-      {/* ------------------------------------------------ seletor de exercício */}
+      {/* ------------------------------------------------ seletor */}
       <div className="snap-x-chips -mx-4 px-4 sm:mx-0 sm:px-0">
-        {workoutToday.exercises.map((ex, i) => {
-          const allDone = logs[i].every((s) => s.done);
+        {workout.exercises.map((ex, i) => {
+          const allDone = sets[i]?.every((s) => s.done);
           return (
             <button
               key={ex.id}
@@ -129,17 +176,19 @@ export function SessaoView() {
           <Badge tone="neutral">{exercise.sets} séries</Badge>
         </div>
 
-        {/* Cabeçalho da grade de séries */}
         <div className="grid grid-cols-[2.5rem_1fr_1fr_2.75rem] gap-2 px-1 pb-2">
-          {['Série', 'Carga (kg)', 'Reps', ''].map((h) => (
-            <span key={h} className="text-2xs font-bold uppercase tracking-wider text-subtle">
+          {['Série', 'Carga (kg)', 'Reps', ''].map((h, i) => (
+            <span
+              key={h || i}
+              className="text-2xs font-bold uppercase tracking-wider text-subtle"
+            >
               {h}
             </span>
           ))}
         </div>
 
         <div className="space-y-2">
-          {logs[current].map((set, i) => (
+          {sets[current].map((set, i) => (
             <div
               key={i}
               className={cn(
@@ -155,6 +204,7 @@ export function SessaoView() {
                 inputMode="decimal"
                 value={set.load}
                 onChange={(e) => update(i, { load: e.target.value })}
+                onBlur={() => set.done && persist(i, set)}
                 aria-label={`Carga da série ${i + 1}`}
                 className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-center text-base font-semibold tabular-nums focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
               />
@@ -163,12 +213,13 @@ export function SessaoView() {
                 inputMode="numeric"
                 value={set.reps}
                 onChange={(e) => update(i, { reps: e.target.value })}
+                onBlur={() => set.done && persist(i, set)}
                 aria-label={`Repetições da série ${i + 1}`}
                 className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-center text-base font-semibold tabular-nums focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
               />
 
               <button
-                onClick={() => update(i, { done: !set.done })}
+                onClick={() => toggleSet(i)}
                 aria-label={`Concluir série ${i + 1}`}
                 aria-pressed={set.done}
                 className={cn(
@@ -191,29 +242,22 @@ export function SessaoView() {
         )}
       </Card>
 
-      {/* ------------------------------------------------ ações */}
-      <div className="flex gap-3">
-        <Button
-          variant="secondary"
-          icon={RotateCcw}
-          className="flex-1"
-          onClick={() => {
-            setLogs(buildLogs());
-            setSeconds(0);
-          }}
-        >
-          Reiniciar
-        </Button>
-        <Button className="flex-1" onClick={() => setFinished(true)}>
-          Finalizar treino
-        </Button>
-      </div>
+      <Button block size="lg" onClick={onFinish} disabled={saving}>
+        {saving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            Salvando…
+          </>
+        ) : (
+          'Finalizar treino'
+        )}
+      </Button>
 
       <Sheet
         open={finished}
         onClose={() => setFinished(false)}
         title="Treino concluído"
-        description="Os dados vão para a análise da IA e para o painel do seu médico."
+        description="Os dados vão para a análise da IA e para o painel do seu profissional."
         footer={
           <Button block onClick={() => router.push('/inicio')}>
             Voltar para o início
@@ -231,9 +275,9 @@ export function SessaoView() {
 
           <dl className="grid grid-cols-3 gap-2">
             {[
-              { label: 'Séries', value: `${doneSets}/${totalSets}` },
-              { label: 'Exercícios', value: String(workoutToday.exercises.length) },
-              { label: 'Ficha', value: workoutToday.letter },
+              { label: 'Séries', value: `${doneSets}/${flat.length}` },
+              { label: 'Exercícios', value: String(workout.exercises.length) },
+              { label: 'Ficha', value: workout.letter },
             ].map((s) => (
               <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-3 text-center">
                 <dt className="text-2xs font-medium text-subtle">{s.label}</dt>

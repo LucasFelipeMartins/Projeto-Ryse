@@ -13,9 +13,9 @@ import {
   Repeat,
   Weight,
 } from 'lucide-react';
-import { Badge, ButtonLink, Card, PageIntro, SectionTitle } from '@/components/ui';
+import { Badge, ButtonLink, Card, EmptyState, PageIntro, SectionTitle } from '@/components/ui';
 import { Sheet } from '@/components/ui/interactive';
-import { weekSplit, workoutToday, type Exercise } from '@/lib/data';
+import type { ExerciseView, WeekDayView, WorkoutView } from '@/lib/queries/patient';
 import { cn } from '@/lib/utils';
 
 const stateStyles = {
@@ -25,27 +25,49 @@ const stateStyles = {
   rest: 'border-dashed border-line bg-surface-2 text-subtle',
 } as const;
 
-export function TreinoView() {
-  const [detail, setDetail] = useState<Exercise | null>(null);
+export function TreinoView({
+  plan,
+  today,
+  week,
+}: {
+  plan: { title: string; split: string | null; week_number: number; total_weeks: number } | null;
+  today: WorkoutView | null;
+  week: WeekDayView[];
+}) {
+  const [detail, setDetail] = useState<ExerciseView | null>(null);
+
+  if (!plan || !today) {
+    return (
+      <div className="space-y-6">
+        <PageIntro title="Treino" />
+        <Card>
+          <EmptyState
+            icon={Dumbbell}
+            title="Nenhuma ficha ativa"
+            description="Quando seu profissional montar a periodização, as fichas da semana aparecem aqui."
+          />
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="Ficha C · Semana 9"
+        eyebrow={`${plan.split ?? 'Periodização'} · semana ${plan.week_number} de ${plan.total_weeks}`}
         title="Treino"
-        description="Periodização ondulatória, ajustada pela IA e aprovada pelo seu médico."
+        description={plan.title}
       />
 
       {/* ------------------------------------------------ divisão semanal */}
       <section>
-        <SectionTitle title="Sua semana" hint="Toque no dia para ver a ficha." />
-        {/* Rolagem horizontal no mobile; grade completa a partir do sm. */}
+        <SectionTitle title="Sua semana" />
         <div className="snap-x-chips -mx-4 px-4 sm:mx-0 sm:grid sm:grid-cols-7 sm:gap-2 sm:overflow-visible sm:px-0">
-          {weekSplit.map((d, i) => (
-            <button
+          {week.map((d, i) => (
+            <div
               key={`${d.day}-${i}`}
               className={cn(
-                'tap w-[76px] shrink-0 snap-start rounded-2xl border px-2 py-3 text-center transition-colors sm:w-auto',
+                'w-[76px] shrink-0 snap-start rounded-2xl border px-2 py-3 text-center sm:w-auto',
                 stateStyles[d.state],
               )}
             >
@@ -56,7 +78,7 @@ export function TreinoView() {
               <span className="mt-1.5 block truncate text-2xs font-medium opacity-80">
                 {d.focus}
               </span>
-            </button>
+            </div>
           ))}
         </div>
       </section>
@@ -68,25 +90,24 @@ export function TreinoView() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand text-xl font-bold text-brand-on">
-              {workoutToday.letter}
+              {today.letter}
             </span>
             <div>
-              <h2 className="text-lg font-bold tracking-tight">{workoutToday.title}</h2>
-              <p className="text-sm text-muted">{workoutToday.focus}</p>
+              <h2 className="text-lg font-bold tracking-tight">{today.title}</h2>
+              <p className="text-sm text-muted">{today.focus}</p>
             </div>
           </div>
-          <Badge tone="warn">Não iniciado</Badge>
         </div>
 
         <dl className="mt-5 grid grid-cols-3 gap-2">
           {[
-            { icon: Clock, label: 'Duração', value: `${workoutToday.duration} min` },
-            { icon: Activity, label: 'Volume', value: workoutToday.volume },
+            { icon: Clock, label: 'Duração', value: `${today.minutes} min` },
             {
-              icon: Dumbbell,
-              label: 'Exercícios',
-              value: String(workoutToday.exercises.length),
+              icon: Activity,
+              label: 'Séries',
+              value: String(today.exercises.reduce((s, e) => s + e.sets, 0)),
             },
+            { icon: Dumbbell, label: 'Exercícios', value: String(today.exercises.length) },
           ].map((s) => (
             <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-2.5">
               <dt className="flex items-center gap-1.5 text-2xs font-medium text-subtle">
@@ -108,17 +129,14 @@ export function TreinoView() {
         <SectionTitle
           title="Exercícios"
           action={
-            <Link
-              href="/treino/sessao"
-              className="text-sm font-semibold text-brand-text hover:underline"
-            >
+            <Link href="/treino/sessao" className="text-sm font-semibold text-brand-text hover:underline">
               Registrar cargas
             </Link>
           }
         />
 
         <Card inset className="divide-y divide-line overflow-hidden">
-          {workoutToday.exercises.map((ex, i) => (
+          {today.exercises.map((ex, i) => (
             <button
               key={ex.id}
               onClick={() => setDetail(ex)}
@@ -133,7 +151,6 @@ export function TreinoView() {
                   {ex.sets} × {ex.reps} · {ex.load}
                 </span>
               </span>
-              {ex.done && <Badge tone="success">Feito</Badge>}
               <ChevronRight className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
             </button>
           ))}
@@ -143,8 +160,10 @@ export function TreinoView() {
       <Card className="flex items-start gap-3">
         <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
         <p className="text-sm text-muted">
-          Próxima revisão de ciclo em <strong className="text-fg">12 dias</strong>. A IA
-          vai comparar suas cargas registradas com a meta da periodização.
+          Faltam{' '}
+          <strong className="text-fg">{plan.total_weeks - plan.week_number} semanas</strong>{' '}
+          para a revisão de ciclo. A IA compara suas cargas registradas com a meta da
+          periodização.
         </p>
       </Card>
 
@@ -181,24 +200,9 @@ export function TreinoView() {
               </div>
             )}
 
-            <h3 className="mb-2 mt-6 text-sm font-semibold">Histórico de carga</h3>
-            <ul className="space-y-2">
-              {[
-                { week: 'Semana 9 (hoje)', load: detail.load, note: 'Meta' },
-                { week: 'Semana 8', load: '75 kg', note: '4 × 8 concluídas' },
-                { week: 'Semana 7', load: '75 kg', note: '4 × 7 concluídas' },
-              ].map((h) => (
-                <li
-                  key={h.week}
-                  className="flex items-center justify-between rounded-xl bg-surface-2 px-3.5 py-2.5"
-                >
-                  <span className="text-sm font-medium">{h.week}</span>
-                  <span className="text-sm text-muted">
-                    <strong className="tabular-nums text-fg">{h.load}</strong> · {h.note}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <Badge tone="neutral" className="mt-5">
+              O histórico de carga aparece depois da primeira sessão registrada.
+            </Badge>
           </div>
         )}
       </Sheet>

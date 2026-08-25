@@ -19,14 +19,9 @@ import {
 import { Avatar, Badge, Button, Card, Progress, SectionTitle } from '@/components/ui';
 import { Tabs } from '@/components/ui/interactive';
 import { BarChart, LineChart } from '@/components/charts';
-import {
-  adherenceSeries,
-  examMarkers,
-  patientTimeline,
-  weightSeries,
-  type Patient,
-} from '@/lib/data';
-import { cn } from '@/lib/utils';
+import type { getPatientDetail } from '@/lib/queries/pro';
+
+type PatientDetail = NonNullable<Awaited<ReturnType<typeof getPatientDetail>>>;
 
 type Tab = 'resumo' | 'nutricao' | 'treino' | 'exames';
 
@@ -36,26 +31,20 @@ const examStatus = {
   alterado: { label: 'Alterado', icon: AlertTriangle, tone: 'danger' as const },
 };
 
-const toneDot: Record<string, string> = {
-  success: 'bg-success',
-  brand: 'bg-brand',
-  warn: 'bg-warn',
-  danger: 'bg-danger',
-  neutral: 'bg-subtle',
-};
-
-const weekLabels = Array.from({ length: weightSeries.length }, (_, i) => `S${i + 1}`);
-const adherenceLabels = Array.from({ length: adherenceSeries.length }, (_, i) => `S${i + 1}`);
-
-export function PacienteDetalhe({ patient }: { patient: Patient }) {
+export function PacienteDetalhe({ patient }: { patient: PatientDetail }) {
   const [tab, setTab] = useState<Tab>('resumo');
+
+  const weightLabels = patient.weightSeries.map((_, i) => `S${i + 1}`);
+  const adherenceLabels = patient.adherenceSeries.map((_, i) => `S${i + 1}`);
+  const hasWeight = patient.weightSeries.length >= 2;
+  const hasAdherence = patient.adherenceSeries.some((n) => n > 0);
 
   return (
     <div className="space-y-5">
       {/* ------------------------------------------------ cabeçalho */}
       <Card>
         <div className="flex items-start gap-3">
-          <Avatar name={patient.name} size="lg" online={patient.online} />
+          <Avatar name={patient.name} size="lg" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">
               {patient.name}
@@ -63,7 +52,7 @@ export function PacienteDetalhe({ patient }: { patient: Patient }) {
             <p className="truncate text-sm text-muted">{patient.email}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Badge tone="brand">{patient.plan}</Badge>
-              <Badge tone={patient.tone}>{patient.status}</Badge>
+              <Badge tone="neutral">{patient.goal}</Badge>
             </div>
           </div>
         </div>
@@ -71,9 +60,17 @@ export function PacienteDetalhe({ patient }: { patient: Patient }) {
         <dl className="mt-5 grid grid-cols-2 gap-2 border-t border-line pt-4 sm:grid-cols-4">
           {[
             { icon: Target, label: 'Objetivo', value: patient.goal },
-            { icon: Activity, label: 'Peso atual', value: `${patient.weight} kg` },
+            {
+              icon: Activity,
+              label: 'Peso atual',
+              value: patient.weight ? `${patient.weight} kg` : '—',
+            },
             { icon: CalendarDays, label: 'Último check-in', value: patient.lastCheckin },
-            { icon: BrainCircuit, label: 'Adesão', value: `${patient.adherence}%` },
+            {
+              icon: BrainCircuit,
+              label: 'Adesão',
+              value: patient.adherence ? `${patient.adherence}%` : '—',
+            },
           ].map((s) => (
             <div key={s.label} className="rounded-xl bg-surface-2 px-3 py-2.5">
               <dt className="flex items-center gap-1.5 text-2xs font-medium text-subtle">
@@ -118,49 +115,53 @@ export function PacienteDetalhe({ patient }: { patient: Patient }) {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <h2 className="text-sm font-semibold">Peso corporal</h2>
-              <p className="mt-0.5 text-sm text-muted">Últimas 12 semanas.</p>
+              <p className="mt-0.5 text-sm text-muted">
+                {hasWeight ? 'Medições registradas.' : 'Sem histórico suficiente ainda.'}
+              </p>
+              {hasWeight && (
               <LineChart
                 className="mt-4"
-                data={weightSeries}
-                labels={weekLabels}
+                data={patient.weightSeries}
+                labels={weightLabels}
                 format={{ decimals: 1, suffix: ' kg' }}
                 height={160}
-                caption={`Peso corporal de ${patient.name} nas últimas 12 semanas.`}
+                caption={`Peso corporal de ${patient.name} nas últimas medições.`}
               />
+              )}
             </Card>
 
             <Card>
               <h2 className="text-sm font-semibold">Adesão ao protocolo</h2>
-              <p className="mt-0.5 text-sm text-muted">Percentual por semana.</p>
+              <p className="mt-0.5 text-sm text-muted">
+                {hasAdherence ? 'Percentual por semana.' : 'Sem registros ainda.'}
+              </p>
+              {hasAdherence && (
               <BarChart
                 className="mt-4"
-                data={adherenceSeries}
+                data={patient.adherenceSeries}
                 labels={adherenceLabels}
                 format={{ suffix: '%' }}
                 height={160}
                 caption={`Adesão semanal de ${patient.name} ao protocolo.`}
               />
+              )}
             </Card>
           </div>
 
-          <section>
-            <SectionTitle title="Linha do tempo" />
-            <Card inset className="divide-y divide-line">
-              {patientTimeline.map((item) => (
-                <div key={item.title} className="flex gap-3 px-4 py-3.5">
-                  <span
-                    className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', toneDot[item.tone])}
-                    aria-hidden
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{item.title}</p>
-                    <p className="mt-0.5 text-sm text-muted">{item.desc}</p>
-                  </div>
-                  <span className="shrink-0 text-2xs font-medium text-subtle">{item.t}</span>
-                </div>
-              ))}
-            </Card>
-          </section>
+          <Card className="flex items-start gap-3">
+            <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
+            <p className="text-sm text-muted">
+              Último check-in{' '}
+              <strong className="text-fg">{patient.lastCheckin}</strong>
+              {patient.adherence > 0 && (
+                <>
+                  {' '}· adesão relatada de{' '}
+                  <strong className="tabular-nums text-fg">{patient.adherence}%</strong>
+                </>
+              )}
+              .
+            </p>
+          </Card>
         </div>
       )}
 
@@ -261,7 +262,7 @@ export function PacienteDetalhe({ patient }: { patient: Patient }) {
       {tab === 'exames' && (
         <div className="animate-fade-in">
           <Card inset className="divide-y divide-line overflow-hidden">
-            {examMarkers.map((m) => {
+            {patient.markers.map((m) => {
               const status = examStatus[m.status];
               return (
                 <div key={m.name} className="flex items-center gap-3 px-4 py-3.5">

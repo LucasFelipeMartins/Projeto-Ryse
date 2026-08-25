@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronLeft, ChevronRight, Send, Sparkles } from 'lucide-react';
-import { Button, Card, PageIntro, Progress } from '@/components/ui';
+import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, Send, Sparkles } from 'lucide-react';
+import { Badge, Button, Card, PageIntro, Progress } from '@/components/ui';
 import { Field, Input, Sheet, Textarea } from '@/components/ui/interactive';
+import { submitCheckin } from '@/lib/actions/patient';
+import type { CheckinRow } from '@/lib/supabase/types';
 import { cn } from '@/lib/utils';
 
 type Answers = {
@@ -67,32 +69,86 @@ function Scale({
   );
 }
 
-export function CheckinView() {
+export function CheckinView({
+  last,
+  alreadySent,
+}: {
+  last: CheckinRow | null;
+  alreadySent: boolean;
+}) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  // Pré-preenche com o último check-in: mais rápido do que digitar do zero.
   const [a, setA] = useState<Answers>({
-    peso: '74,5',
-    sono: '6,2',
-    energia: 3,
-    fome: 3,
-    dor: 1,
-    adesao: 4,
+    peso: last?.weight_kg ? String(last.weight_kg).replace('.', ',') : '',
+    sono: last?.sleep_hours ? String(last.sleep_hours).replace('.', ',') : '',
+    energia: last?.energy ?? 3,
+    fome: last?.hunger ?? 3,
+    dor: last?.pain ?? 1,
+    adesao: last?.adherence ?? 4,
     obs: '',
   });
+
+  const decimal = (value: string) => {
+    const n = Number(value.replace(',', '.'));
+    return value.trim() && Number.isFinite(n) ? n : null;
+  };
+
+  const send = () => {
+    setError(null);
+    startSaving(async () => {
+      const result = await submitCheckin({
+        weightKg: decimal(a.peso),
+        sleepHours: decimal(a.sono),
+        energy: a.energia,
+        hunger: a.fome,
+        pain: a.dor,
+        adherence: a.adesao,
+        notes: a.obs,
+      });
+
+      if (!result.ok) {
+        setError(result.error ?? 'Não foi possível enviar.');
+        return;
+      }
+      setSent(true);
+    });
+  };
 
   const set = <K extends keyof Answers>(key: K, value: Answers[K]) =>
     setA((prev) => ({ ...prev, [key]: value }));
 
-  const last = step === STEPS.length - 1;
+  const isLastStep = step === STEPS.length - 1;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <PageIntro
-        eyebrow={`Semana 9 · Etapa ${step + 1} de ${STEPS.length}`}
+        eyebrow={`Etapa ${step + 1} de ${STEPS.length}`}
         title="Check-in semanal"
         description="Leva menos de dois minutos e é o que alimenta os ajustes do seu protocolo."
+        action={alreadySent ? <Badge tone="success">Enviado</Badge> : undefined}
       />
+
+      {alreadySent && !sent && (
+        <Card className="flex items-start gap-2.5 border-brand-line bg-brand-soft">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand-text" aria-hidden />
+          <p className="text-sm text-muted">
+            Você já enviou o check-in desta semana. Enviar de novo substitui as
+            respostas anteriores.
+          </p>
+        </Card>
+      )}
+
+      {error && (
+        <Card className="flex items-start gap-2.5 border-danger/25 bg-danger-soft">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" aria-hidden />
+          <p className="text-sm font-medium text-danger">{error}</p>
+        </Card>
+      )}
 
       <div>
         <Progress
@@ -174,7 +230,7 @@ export function CheckinView() {
         {step === 2 && (
           <div className="animate-fade-in space-y-5">
             <Field
-              label="Quer contar algo ao seu médico?"
+              label="Quer contar algo ao seu profissional?"
               hint="Viagens, eventos, mudanças de rotina, sintomas — tudo ajuda a IA a contextualizar."
             >
               <Textarea
@@ -220,9 +276,21 @@ export function CheckinView() {
             Voltar
           </Button>
         )}
-        {last ? (
-          <Button icon={Send} onClick={() => setSent(true)} className="flex-1">
-            Enviar check-in
+        {isLastStep ? (
+          <Button
+            icon={saving ? undefined : Send}
+            onClick={send}
+            disabled={saving}
+            className="flex-1"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                Enviando…
+              </>
+            ) : (
+              'Enviar check-in'
+            )}
           </Button>
         ) : (
           <Button
@@ -252,7 +320,7 @@ export function CheckinView() {
           </span>
           <p className="max-w-xs text-center text-sm text-muted">
             Se algum ajuste for necessário, ele aparece no seu plano após a aprovação do
-            seu médico — normalmente em até 24 horas.
+            seu profissional — normalmente em até 24 horas.
           </p>
         </div>
       </Sheet>

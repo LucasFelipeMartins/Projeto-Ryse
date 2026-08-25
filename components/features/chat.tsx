@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useOptimistic, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   BrainCircuit,
   ChevronLeft,
   FileText,
+  Loader2,
   Paperclip,
   Search,
   Send,
@@ -13,12 +15,13 @@ import {
 } from 'lucide-react';
 import { Avatar, Badge, Card, EmptyState } from '@/components/ui';
 import { Input } from '@/components/ui/interactive';
-import { conversations, me, pro, thread, type ChatMessage } from '@/lib/data';
+import { markConversationRead, sendMessage } from '@/lib/actions/chat';
+import type { ConversationView, MessageView } from '@/lib/queries/chat';
 import { cn } from '@/lib/utils';
 
 /* ------------------------------------------------------------- MENSAGENS */
 
-function Bubble({ msg, peerName }: { msg: ChatMessage; peerName: string }) {
+function Bubble({ msg, peerName }: { msg: MessageView; peerName: string }) {
   if (msg.from === 'ai') {
     return (
       <div className="my-2 flex justify-center">
@@ -34,7 +37,7 @@ function Bubble({ msg, peerName }: { msg: ChatMessage; peerName: string }) {
   return (
     <div className={cn('flex gap-2.5', mine ? 'justify-end' : 'justify-start')}>
       {!mine && <Avatar name={peerName} size="xs" className="mt-auto" />}
-      <div className={cn('max-w-[78%] sm:max-w-[70%]', mine && 'items-end')}>
+      <div className="max-w-[78%] sm:max-w-[70%]">
         <div
           className={cn(
             'px-3.5 py-2.5 text-sm leading-relaxed',
@@ -61,17 +64,19 @@ function Bubble({ msg, peerName }: { msg: ChatMessage; peerName: string }) {
 function Composer({
   peerName,
   onSend,
+  pending,
   showAiHint,
 }: {
   peerName: string;
   onSend: (text: string) => void;
+  pending: boolean;
   showAiHint?: boolean;
 }) {
   const [text, setText] = useState('');
 
   const submit = () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || pending) return;
     onSend(t);
     setText('');
   };
@@ -80,6 +85,7 @@ function Composer({
     <div className="shrink-0 border-t border-line bg-surface p-3">
       <div className="flex items-end gap-2 rounded-2xl border border-line bg-surface-2 p-1.5 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/25">
         <button
+          type="button"
           aria-label="Anexar arquivo"
           className="tap flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-subtle hover:text-fg"
         >
@@ -91,7 +97,7 @@ function Composer({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
-            // Enter envia; Shift+Enter quebra linha (só faz sentido no desktop).
+            // Enter envia; Shift+Enter quebra linha.
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();
@@ -104,11 +110,15 @@ function Composer({
 
         <button
           onClick={submit}
-          disabled={!text.trim()}
+          disabled={!text.trim() || pending}
           aria-label="Enviar mensagem"
           className="tap flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-on disabled:opacity-40"
         >
-          <Send className="h-4 w-4" aria-hidden />
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Send className="h-4 w-4" aria-hidden />
+          )}
         </button>
       </div>
 
@@ -123,27 +133,59 @@ function Composer({
 }
 
 function Conversation({
+  conversationId,
   peerName,
   peerMeta,
   messages,
-  onSend,
   onBack,
   showAiHint,
   header,
 }: {
+  conversationId: string;
   peerName: string;
   peerMeta: string;
-  messages: ChatMessage[];
-  onSend: (text: string) => void;
+  messages: MessageView[];
   onBack?: () => void;
   showAiHint?: boolean;
   header?: React.ReactNode;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+
+  // A bolha aparece antes de o servidor responder.
+  const [optimistic, addOptimistic] = useOptimistic(
+    messages,
+    (current: MessageView[], text: string) => [
+      ...current,
+      {
+        id: `pending-${current.length}`,
+        from: 'me' as const,
+        text,
+        time: new Date().toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      },
+    ],
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length]);
+  }, [optimistic.length]);
+
+  // Ao abrir, zera o contador de não lidas.
+  useEffect(() => {
+    void markConversationRead(conversationId);
+  }, [conversationId]);
+
+  const send = (text: string) => {
+    startTransition(async () => {
+      addOptimistic(text);
+      await sendMessage(conversationId, text);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -157,7 +199,7 @@ function Conversation({
             <ChevronLeft className="h-5 w-5" aria-hidden />
           </button>
         )}
-        <Avatar name={peerName} size="sm" online />
+        <Avatar name={peerName} size="sm" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold">{peerName}</h2>
           <p className="truncate text-2xs text-muted">{peerMeta}</p>
@@ -166,71 +208,40 @@ function Conversation({
       </div>
 
       <div className="scrollbar-thin min-h-0 flex-1 space-y-3 overflow-y-auto bg-canvas p-4">
-        <div className="flex justify-center pb-1">
-          <span className="rounded-full border border-line bg-surface px-3 py-1 text-2xs font-bold uppercase tracking-wider text-subtle">
-            Hoje
-          </span>
-        </div>
-        {messages.map((m) => (
-          <Bubble key={m.id} msg={m} peerName={peerName} />
-        ))}
+        {optimistic.length === 0 ? (
+          <EmptyState
+            icon={Send}
+            title="Nenhuma mensagem ainda"
+            description="Escreva a primeira mensagem abaixo."
+          />
+        ) : (
+          optimistic.map((m) => <Bubble key={m.id} msg={m} peerName={peerName} />)
+        )}
         <div ref={endRef} />
       </div>
 
-      <Composer peerName={peerName} onSend={onSend} showAiHint={showAiHint} />
+      <Composer peerName={peerName} onSend={send} pending={pending} showAiHint={showAiHint} />
     </div>
   );
 }
 
 /* ------------------------------------------ VISÃO DO PACIENTE (1 conversa) */
 
-export function PatientChatView() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: '1', from: 'them', text: `Bom dia, ${me.firstName}! Como foi a semana?`, time: '09:12' },
-    {
-      id: '2',
-      from: 'me',
-      text: 'Bom dia, doutor! Treinos em dia, mas o sono continua curto.',
-      time: '09:30',
-    },
-    {
-      id: '3',
-      from: 'ai',
-      text: 'A IA correlacionou seu sono médio de 6h10 com a queda de 8% no volume de treino da última semana.',
-      time: '09:30',
-    },
-    {
-      id: '4',
-      from: 'them',
-      text: 'Perfeito. Vamos manter o protocolo e focar em higiene do sono. Ajustei a ceia para ajudar.',
-      time: '09:41',
-    },
-  ]);
-
-  const send = (text: string) =>
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: String(prev.length + 1),
-        from: 'me',
-        text,
-        time: new Date().toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      },
-    ]);
-
+export function PatientChatView({
+  conversation,
+}: {
+  conversation: { id: string; peerName: string; peerMeta: string; messages: MessageView[] };
+}) {
   return (
     <Card inset className="h-pane overflow-hidden">
       <Conversation
-        peerName={me.coach}
-        peerMeta={pro.role}
-        messages={messages}
-        onSend={send}
+        conversationId={conversation.id}
+        peerName={conversation.peerName}
+        peerMeta={conversation.peerMeta}
+        messages={conversation.messages}
         header={
           <Badge tone="brand" icon={Stethoscope} className="hidden sm:inline-flex">
-            Seu médico
+            Seu profissional
           </Badge>
         }
       />
@@ -240,36 +251,42 @@ export function PatientChatView() {
 
 /* --------------------------------------- VISÃO DO PROFISSIONAL (inbox) */
 
-export function ProInboxView() {
+export function ProInboxView({
+  conversations,
+  activeId,
+  messages,
+}: {
+  conversations: ConversationView[];
+  activeId: string | null;
+  messages: MessageView[];
+}) {
+  const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, ChatMessage[]>>(thread);
   const [query, setQuery] = useState('');
 
-  // No desktop sempre há uma conversa aberta; no mobile, só depois do toque.
-  const activeId = selected ?? conversations[0].id;
-  const active = conversations.find((c) => c.id === activeId)!;
-  const messages = drafts[activeId] ?? [];
+  if (conversations.length === 0) {
+    return (
+      <Card className="h-pane">
+        <EmptyState
+          icon={Search}
+          title="Nenhuma conversa"
+          description="As conversas aparecem quando você tem pacientes vinculados."
+        />
+      </Card>
+    );
+  }
+
+  const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
 
   const filtered = conversations.filter((c) =>
-    c.name.toLowerCase().includes(query.trim().toLowerCase()),
+    c.peerName.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
-  const send = (text: string) =>
-    setDrafts((prev) => ({
-      ...prev,
-      [activeId]: [
-        ...(prev[activeId] ?? []),
-        {
-          id: String((prev[activeId]?.length ?? 0) + 1),
-          from: 'me',
-          text,
-          time: new Date().toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        },
-      ],
-    }));
+  const open = (id: string) => {
+    setSelected(id);
+    // A conversa é estado de URL: permite recarregar e compartilhar o link.
+    router.push(`/pro/mensagens?conversa=${id}`);
+  };
 
   return (
     <Card inset className="h-pane overflow-hidden lg:grid lg:grid-cols-[20rem_1fr]">
@@ -299,22 +316,20 @@ export function ProInboxView() {
             />
           ) : (
             filtered.map((c) => {
-              const isActive = c.id === activeId;
+              const isActive = c.id === active.id;
               return (
                 <button
                   key={c.id}
-                  onClick={() => setSelected(c.id)}
+                  onClick={() => open(c.id)}
                   className={cn(
-                    'relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left transition-colors',
-                    'hover:bg-surface-2',
-                    // Só destaca a linha ativa no desktop (no mobile a lista some).
+                    'relative flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left transition-colors hover:bg-surface-2',
                     isActive && 'lg:bg-surface-2',
                   )}
                 >
                   {isActive && (
                     <span className="absolute inset-y-0 left-0 hidden w-1 bg-brand lg:block" />
                   )}
-                  <Avatar name={c.name} size="sm" online={c.online} />
+                  <Avatar name={c.peerName} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span
@@ -323,7 +338,7 @@ export function ProInboxView() {
                           c.unread > 0 ? 'font-bold' : 'font-semibold',
                         )}
                       >
-                        {c.name}
+                        {c.peerName}
                       </span>
                       <span className="shrink-0 text-2xs font-medium text-subtle">
                         {c.time}
@@ -355,16 +370,16 @@ export function ProInboxView() {
       {/* Conversa — some no mobile enquanto a lista está aberta */}
       <div className={cn('h-full min-h-0', selected === null && 'hidden lg:block')}>
         <Conversation
-          peerName={active.name}
-          peerMeta={active.plan}
+          conversationId={active.id}
+          peerName={active.peerName}
+          peerMeta={active.peerMeta}
           messages={messages}
-          onSend={send}
           onBack={() => setSelected(null)}
           showAiHint
           header={
             <button
-              className="tap hidden h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-semibold text-muted hover:text-fg sm:inline-flex"
               type="button"
+              className="tap hidden h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-semibold text-muted hover:text-fg sm:inline-flex"
             >
               <FileText className="h-4 w-4" aria-hidden />
               Prontuário

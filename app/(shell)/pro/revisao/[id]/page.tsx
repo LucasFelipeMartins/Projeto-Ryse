@@ -1,18 +1,12 @@
 import { notFound } from 'next/navigation';
 import { RevisaoDetalhe } from '@/components/features/revisao-detalhe';
-import { reviewQueue } from '@/lib/data';
+import { getReview } from '@/lib/queries/pro';
+import { requireProfessional } from '@/lib/supabase/server';
 
-export function generateStaticParams() {
-  return reviewQueue.map((c) => ({ id: c.id }));
-}
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const item = reviewQueue.find((c) => c.id === id);
+  const pro = await requireProfessional();
+  const item = await getReview(id, pro.id);
   return { title: item ? `Revisão · ${item.patient}` : 'Revisão' };
 }
 
@@ -22,7 +16,9 @@ export default async function RevisaoDetalhePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const item = reviewQueue.find((c) => c.id === id);
+  const pro = await requireProfessional();
+  const item = await getReview(id, pro.id);
+
   if (!item) notFound();
 
   return <RevisaoDetalhe item={item} />;

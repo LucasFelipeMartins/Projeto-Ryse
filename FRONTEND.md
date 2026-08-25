@@ -12,8 +12,13 @@ desktop. Pronto para deploy na Vercel.
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
+cp .env.example .env.local   # preencha com as chaves do Supabase
+npm run dev                  # http://localhost:3000
 ```
+
+O backend (Supabase, schema, RLS e autenticação) está documentado em
+**[BACKEND.md](BACKEND.md)**. Sem as variáveis configuradas o app abre numa
+tela explicando o passo a passo, em vez de quebrar.
 
 | Script              | O que faz                                        |
 | ------------------- | ------------------------------------------------ |
@@ -89,19 +94,21 @@ só na cor (legenda + rótulo direto), e uma tabela alternativa aos gráficos em
 ```
 app/
   layout.tsx              tema, metadata PWA, fontes
-  page.tsx                redireciona para /inicio
-  login/                  entrada (paciente e profissional)
+  page.tsx                porta de entrada — roteia por papel
+  (auth)/                 entrar, cadastrar, recuperar e nova senha
+  auth/                   retornos dos links de e-mail (callback/confirmar)
   offline/                casca offline do service worker
   (shell)/                tudo que usa o shell de navegação
-    inicio/               painel do paciente
-    nutricao/             cardápio do dia + substituições
-    treino/               ficha da semana
-    treino/sessao/        execução com cronômetro e registro de carga
-    progresso/            peso, adesão e marcadores de sangue
-    checkin/              check-in semanal em 3 etapas
-    mensagens/            conversa com o profissional
-    perfil/               conta, tema e instalação do app
-    pro/                  painel do profissional
+    (paciente)/           área do cliente — requirePatient()
+      inicio/             painel do dia
+      nutricao/           cardápio + substituições
+      treino/             ficha da semana
+      treino/sessao/      execução com cronômetro e registro de carga
+      progresso/          peso, adesão e marcadores de sangue
+      checkin/            check-in semanal em 3 etapas
+      mensagens/          conversa com o profissional
+      perfil/             conta, tema e instalação do app
+    pro/                  área administrativa — requireProfessional()
       pacientes/[id]      CRM e prontuário
       revisao/[id]        decisão clínica sobre a proposta da IA
       protocolos/         moldes que alimentam a IA
@@ -111,18 +118,24 @@ app/
 components/
   ui/                     Card, Button, Badge, Sheet, Tabs, Switch…
   charts/                 LineChart, BarChart, StackedBar, Ring, Sparkline
-  layout/                 shell, tab bar, sidebar, marca
+  layout/                 shell, tab bar, sidebar, marca, tela de setup
   features/               telas com estado
 
 lib/
-  data.ts                 dados de demonstração, tipados
+  supabase/               clientes, tipos do banco e guardas de sessão
+  queries/                leitura (server-only)
+  actions/                escrita (Server Actions)
   theme.tsx               provider de tema + script anti-flash
   nav.ts                  navegação por perfil
-  utils.ts                cn(), formatação pt-BR
+  utils.ts                cn(), datas e formatação pt-BR
+
+supabase/
+  migrations/             schema, RLS e funções
+  seed.sql                dados de demonstração
 ```
 
-Trocar os dados falsos por uma API é substituir `lib/data.ts` — as telas consomem
-apenas os tipos exportados de lá.
+As duas áreas são isoladas por rota **e** por RLS. A tela do cliente não tem
+nenhum link para a administrativa.
 
 ---
 

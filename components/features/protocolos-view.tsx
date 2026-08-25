@@ -12,9 +12,9 @@ import {
   Unlock,
   Users,
 } from 'lucide-react';
-import { Badge, Button, Card, PageIntro } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, PageIntro } from '@/components/ui';
 import { Tabs } from '@/components/ui/interactive';
-import { protocols } from '@/lib/data';
+import type { ProtocolKind } from '@/lib/supabase/types';
 
 type Tab = 'todos' | 'nutricao' | 'treino' | 'exames';
 
@@ -24,11 +24,19 @@ const typeMeta = {
   exames: { label: 'Exames', icon: Activity },
 } as const;
 
-export function ProtocolosView() {
+type ProtocolView = {
+  id: string;
+  title: string;
+  kind: ProtocolKind;
+  aiEnabled: boolean;
+  uses: number;
+};
+
+export function ProtocolosView({ protocols }: { protocols: ProtocolView[] }) {
   const [tab, setTab] = useState<Tab>('todos');
 
   const filtered =
-    tab === 'todos' ? protocols : protocols.filter((p) => p.type === tab);
+    tab === 'todos' ? protocols : protocols.filter((p) => p.kind === tab);
 
   return (
     <div className="space-y-5">
@@ -53,9 +61,19 @@ export function ProtocolosView() {
         ]}
       />
 
+      {filtered.length === 0 && (
+        <Card>
+          <EmptyState
+            icon={Plus}
+            title="Nenhum protocolo aqui"
+            description="Crie um molde para que a IA tenha uma base sobre a qual propor ajustes."
+          />
+        </Card>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {filtered.map((p) => {
-          const meta = typeMeta[p.type];
+          const meta = typeMeta[p.kind];
           return (
             <Card key={p.id} className="group flex flex-col">
               <div className="flex items-start gap-3">
@@ -91,7 +109,6 @@ export function ProtocolosView() {
                 </span>
 
                 <span className="flex items-center gap-2">
-                  <span className="truncate font-medium text-fg">{p.author}</span>
                   {/* Ícone + rótulo: o cadeado nunca carrega o sentido sozinho. */}
                   <span
                     className={

@@ -1,25 +1,27 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import {
   ArrowDown,
   ArrowRight,
   BrainCircuit,
   Check,
   ChevronLeft,
+  Clock,
   FileText,
+  Loader2,
   MessageSquare,
   Minus,
   Pencil,
   Plus,
-  Scale,
   Target,
   X,
 } from 'lucide-react';
-import { AiPanel, Avatar, Badge, Button, Card, SectionTitle } from '@/components/ui';
+import { AiPanel, Avatar, Badge, Button, ButtonLink, Card, SectionTitle } from '@/components/ui';
 import { Sheet, Textarea } from '@/components/ui/interactive';
-import type { ReviewCase } from '@/lib/data';
+import { decideReview } from '@/lib/actions/pro';
+import type { ReviewView } from '@/lib/queries/pro';
 
 type Decision = 'aprovar' | 'editar' | 'rejeitar';
 
@@ -42,15 +44,28 @@ const decisionCopy: Record<Decision, { title: string; description: string; cta: 
   },
 };
 
-export function RevisaoDetalhe({ item }: { item: ReviewCase }) {
+export function RevisaoDetalhe({ item }: { item: ReviewView }) {
   const router = useRouter();
   const [decision, setDecision] = useState<Decision | null>(null);
   const [done, setDone] = useState<Decision | null>(null);
   const [note, setNote] = useState('');
 
+  const [saving, startSaving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
   const confirm = () => {
-    setDone(decision);
-    setDecision(null);
+    if (!decision) return;
+    setError(null);
+
+    startSaving(async () => {
+      const result = await decideReview(item.id, decision, note);
+      if (!result.ok) {
+        setError(result.error ?? 'Não foi possível registrar.');
+        return;
+      }
+      setDone(decision);
+      setDecision(null);
+    });
   };
 
   return (
@@ -73,11 +88,11 @@ export function RevisaoDetalhe({ item }: { item: ReviewCase }) {
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
               <span className="flex items-center gap-1.5">
                 <Target className="h-3.5 w-3.5" aria-hidden />
-                Hipertrofia limpa
+                {item.module}
               </span>
               <span className="flex items-center gap-1.5">
-                <Scale className="h-3.5 w-3.5" aria-hidden />
-                74,5 kg
+                <Clock className="h-3.5 w-3.5" aria-hidden />
+                {item.age}
               </span>
             </div>
           </div>
@@ -88,17 +103,24 @@ export function RevisaoDetalhe({ item }: { item: ReviewCase }) {
         </div>
 
         <div className="mt-4 flex gap-2 border-t border-line pt-4">
-          <Button variant="secondary" size="sm" icon={FileText} className="flex-1 sm:flex-none">
+          <ButtonLink
+            href={`/pro/pacientes/${item.patientId}`}
+            variant="secondary"
+            size="sm"
+            icon={FileText}
+            className="flex-1 sm:flex-none"
+          >
             Prontuário
-          </Button>
-          <Button
+          </ButtonLink>
+          <ButtonLink
+            href="/pro/mensagens"
             variant="secondary"
             size="sm"
             icon={MessageSquare}
             className="flex-1 sm:flex-none"
           >
             Mensagem
-          </Button>
+          </ButtonLink>
         </div>
       </Card>
 
@@ -305,13 +327,27 @@ export function RevisaoDetalhe({ item }: { item: ReviewCase }) {
               className="flex-1"
               variant={decision === 'rejeitar' ? 'danger' : 'primary'}
               onClick={confirm}
+              disabled={saving}
             >
-              {decision ? decisionCopy[decision].cta : ''}
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Registrando…
+                </>
+              ) : (
+                (decision && decisionCopy[decision].cta) || ''
+              )}
             </Button>
           </div>
         }
       >
         <div className="pb-4">
+          {error && (
+            <p role="alert" className="mb-3 rounded-xl border border-danger/25 bg-danger-soft p-3 text-sm font-medium text-danger">
+              {error}
+            </p>
+          )}
+
           <label className="block">
             <span className="mb-1.5 block text-sm font-semibold">
               {decision === 'rejeitar' ? 'Motivo da rejeição' : 'Observação clínica'}

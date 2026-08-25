@@ -1,5 +1,4 @@
 import {
-  Activity,
   Apple,
   BrainCircuit,
   ClipboardCheck,
@@ -55,7 +54,7 @@ export const patientNav: NavGroup[] = [
     items: [
       { href: '/progresso', label: 'Progresso e exames', icon: TrendingUp },
       { href: '/checkin', label: 'Check-in semanal', icon: ClipboardCheck },
-      { href: '/mensagens', label: 'Mensagens', icon: MessageSquare, badge: 1 },
+      { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
     ],
   },
   {
@@ -69,8 +68,8 @@ export const patientNav: NavGroup[] = [
 export const proTabs: NavItem[] = [
   { href: '/pro', label: 'Painel', icon: LayoutGrid, exact: true },
   { href: '/pro/pacientes', label: 'Pacientes', icon: Users },
-  { href: '/pro/revisao', label: 'Revisão IA', short: 'Revisão', icon: BrainCircuit, badge: 14 },
-  { href: '/pro/mensagens', label: 'Mensagens', short: 'Chat', icon: MessageSquare, badge: 3 },
+  { href: '/pro/revisao', label: 'Revisão IA', short: 'Revisão', icon: BrainCircuit },
+  { href: '/pro/mensagens', label: 'Mensagens', short: 'Chat', icon: MessageSquare },
 ];
 
 export const proNav: NavGroup[] = [
@@ -84,14 +83,14 @@ export const proNav: NavGroup[] = [
   {
     group: 'Inteligência clínica',
     items: [
-      { href: '/pro/revisao', label: 'Revisão IA', icon: BrainCircuit, badge: 14 },
+      { href: '/pro/revisao', label: 'Revisão IA', icon: BrainCircuit },
       { href: '/pro/protocolos', label: 'Protocolos base', icon: FileText },
     ],
   },
   {
     group: 'Gestão',
     items: [
-      { href: '/pro/mensagens', label: 'Mensagens', icon: MessageSquare, badge: 3 },
+      { href: '/pro/mensagens', label: 'Mensagens', icon: MessageSquare },
       { href: '/pro/financeiro', label: 'Faturamento', icon: Wallet },
       { href: '/pro/config', label: 'Configurações', icon: Settings },
     ],
@@ -103,7 +102,6 @@ export const proMoreItems: NavItem[] = [
   { href: '/pro/protocolos', label: 'Protocolos base', icon: FileText },
   { href: '/pro/financeiro', label: 'Faturamento', icon: Wallet },
   { href: '/pro/config', label: 'Configurações', icon: Settings },
-  { href: '/inicio', label: 'Ver como paciente', icon: Activity },
 ];
 
 export function isActive(pathname: string, item: NavItem) {

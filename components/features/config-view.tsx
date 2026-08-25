@@ -14,9 +14,10 @@ import {
 } from 'lucide-react';
 import { Avatar, Badge, Card, PageIntro, SectionTitle } from '@/components/ui';
 import { Field, Input, Switch, ThemePicker } from '@/components/ui/interactive';
-import { pro } from '@/lib/data';
+import { SignOutButton } from '@/components/layout/app-shell';
+import type { SessionUser } from '@/lib/supabase/server';
 
-export function ConfigView() {
+export function ConfigView({ user }: { user: SessionUser }) {
   const [autoNutricao, setAutoNutricao] = useState(true);
   const [autoTreino, setAutoTreino] = useState(true);
   const [autoSuplemento, setAutoSuplemento] = useState(false);
@@ -32,22 +33,24 @@ export function ConfigView() {
       {/* ------------------------------------------------ perfil */}
       <Card>
         <div className="flex items-center gap-4">
-          <Avatar name={pro.name} size="lg" />
+          <Avatar name={user.fullName} size="lg" />
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-bold tracking-tight">{pro.name}</h2>
-            <p className="truncate text-sm text-muted">{pro.role}</p>
-            <Badge tone="brand" icon={Stethoscope} className="mt-2">
-              {pro.crm}
-            </Badge>
+            <h2 className="truncate text-lg font-bold tracking-tight">{user.fullName}</h2>
+            <p className="truncate text-sm text-muted">{user.specialty ?? user.email}</p>
+            {user.crm && (
+              <Badge tone="brand" icon={Stethoscope} className="mt-2">
+                {user.crm}
+              </Badge>
+            )}
           </div>
         </div>
 
         <div className="mt-5 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
           <Field label="Nome de exibição">
-            <Input defaultValue={pro.name} />
+            <Input defaultValue={user.fullName} />
           </Field>
           <Field label="Especialidade">
-            <Input defaultValue={pro.role} />
+            <Input defaultValue={user.specialty ?? ''} placeholder="Ex.: Nutrólogo" />
           </Field>
         </div>
       </Card>
@@ -145,6 +148,10 @@ export function ConfigView() {
           ))}
         </Card>
       </section>
+
+      <Card inset className="p-4">
+        <SignOutButton />
+      </Card>
 
       <p className="pb-2 text-center text-2xs text-subtle">Ryse Pro · versão 1.0.0</p>
     </div>

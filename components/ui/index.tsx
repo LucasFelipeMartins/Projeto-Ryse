@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
-import type { Tone } from '@/lib/data';
+import type { Tone } from '@/lib/types';
 
 /* ------------------------------------------------------------------- CARD */
 

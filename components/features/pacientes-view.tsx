@@ -24,7 +24,7 @@ import {
   Progress,
 } from '@/components/ui';
 import { ChipRow, Input, Sheet } from '@/components/ui/interactive';
-import { patients, type Patient } from '@/lib/data';
+import type { PatientRowView } from '@/lib/queries/pro';
 import { cn } from '@/lib/utils';
 
 const FILTERS = [
@@ -44,14 +44,14 @@ const statusIcon = {
   brand: BrainCircuit,
 } as const;
 
-function matchesFilter(p: Patient, f: Filter) {
+function matchesFilter(p: PatientRowView, f: Filter) {
   if (f === 'todos') return true;
   if (f === 'revisao') return p.tone === 'warn';
   if (f === 'alerta') return p.tone === 'danger';
   return p.tone === 'success';
 }
 
-export function PacientesView() {
+export function PacientesView({ patients }: { patients: PatientRowView[] }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('todos');
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -66,7 +66,7 @@ export function PacientesView() {
           p.email.toLowerCase().includes(q) ||
           p.goal.toLowerCase().includes(q)),
     );
-  }, [query, filter]);
+  }, [patients, query, filter]);
 
   const counts = useMemo(
     () =>
@@ -74,7 +74,7 @@ export function PacientesView() {
         acc[f.value] = patients.filter((p) => matchesFilter(p, f.value)).length;
         return acc;
       }, {}),
-    [],
+    [patients],
   );
 
   return (
@@ -147,7 +147,7 @@ export function PacientesView() {
                 <Link key={p.id} href={`/pro/pacientes/${p.id}`} className="tap block">
                   <Card className="transition-colors hover:border-line-strong">
                     <div className="flex items-start gap-3">
-                      <Avatar name={p.name} size="md" online={p.online} />
+                      <Avatar name={p.name} size="md" />
                       <div className="min-w-0 flex-1">
                         <h3 className="truncate text-sm font-bold">{p.name}</h3>
                         <p className="mt-0.5 truncate text-sm text-muted">
@@ -211,7 +211,7 @@ export function PacientesView() {
                             href={`/pro/pacientes/${p.id}`}
                             className="flex items-center gap-3"
                           >
-                            <Avatar name={p.name} size="sm" online={p.online} />
+                            <Avatar name={p.name} size="sm" />
                             <span className="min-w-0">
                               <span className="block truncate font-semibold group-hover:text-brand-text">
                                 {p.name}

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useTransition } from 'react';
 import {
   Bell,
+  Check,
   ChevronRight,
   CreditCard,
   Download,
   FileText,
   HelpCircle,
-  LogOut,
+  Loader2,
   Palette,
   Ruler,
   Share2,
@@ -17,23 +17,48 @@ import {
   Smartphone,
   Stethoscope,
   Target,
-  UserRoundCog,
 } from 'lucide-react';
 import { Avatar, Badge, Button, Card, PageIntro, SectionTitle } from '@/components/ui';
-import { Sheet, Switch, ThemePicker } from '@/components/ui/interactive';
-import { me } from '@/lib/data';
+import { Field, Input, Sheet, Switch, ThemePicker } from '@/components/ui/interactive';
+import { SignOutButton } from '@/components/layout/app-shell';
+import { updateNotificationPrefs, updateProfile } from '@/lib/actions/patient';
+import type { SessionUser } from '@/lib/supabase/server';
 
-const stats = [
-  { icon: Target, label: 'Objetivo', value: me.goal },
-  { icon: Ruler, label: 'Altura', value: `${me.height} cm` },
-  { icon: Stethoscope, label: 'Médico', value: me.coach },
-];
+type Prefs = {
+  protocolChanges: boolean;
+  workoutReminder: boolean;
+  examResults: boolean;
+};
 
-export function PerfilView() {
-  const [notifPlano, setNotifPlano] = useState(true);
-  const [notifTreino, setNotifTreino] = useState(true);
-  const [notifExames, setNotifExames] = useState(false);
+export function PerfilView({
+  user,
+  prefs,
+  professionalName,
+}: {
+  user: SessionUser;
+  prefs: Prefs;
+  professionalName: string | null;
+}) {
+  const [editOpen, setEditOpen] = useState(false);
   const [install, setInstall] = useState(false);
+  const [notif, setNotif] = useState(prefs);
+  const [, startTransition] = useTransition();
+
+  const savePrefs = (next: Prefs) => {
+    setNotif(next);
+    startTransition(() => void updateNotificationPrefs(next));
+  };
+
+  const memberSince = new Date(user.createdAt).toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const stats = [
+    { icon: Target, label: 'Objetivo', value: user.goal ?? 'A definir' },
+    { icon: Ruler, label: 'Altura', value: user.heightCm ? `${user.heightCm} cm` : '—' },
+    { icon: Stethoscope, label: 'Profissional', value: professionalName ?? 'A definir' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -42,19 +67,23 @@ export function PerfilView() {
       {/* ------------------------------------------------ identidade */}
       <Card>
         <div className="flex items-center gap-4">
-          <Avatar name={me.name} size="lg" />
+          <Avatar name={user.fullName} size="lg" />
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-bold tracking-tight">{me.name}</h2>
-            <p className="text-sm text-muted">ID {me.id} · desde {me.since}</p>
-            <Badge tone="brand" className="mt-2">
-              {me.plan}
-            </Badge>
+            <h2 className="truncate text-lg font-bold tracking-tight">{user.fullName}</h2>
+            <p className="truncate text-sm text-muted">{user.email}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {user.plan && <Badge tone="brand">Ryse {user.plan}</Badge>}
+              <Badge tone="neutral">Desde {memberSince}</Badge>
+            </div>
           </div>
         </div>
 
         <dl className="mt-5 grid grid-cols-1 gap-2 border-t border-line pt-5 sm:grid-cols-3">
           {stats.map((s) => (
-            <div key={s.label} className="flex items-center gap-2.5 rounded-xl bg-surface-2 px-3 py-2.5">
+            <div
+              key={s.label}
+              className="flex items-center gap-2.5 rounded-xl bg-surface-2 px-3 py-2.5"
+            >
               <s.icon className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
               <div className="min-w-0">
                 <dt className="text-2xs font-medium text-subtle">{s.label}</dt>
@@ -63,14 +92,15 @@ export function PerfilView() {
             </div>
           ))}
         </dl>
+
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setEditOpen(true)}>
+          Editar dados
+        </Button>
       </Card>
 
       {/* ------------------------------------------------ aparência */}
       <section>
-        <SectionTitle
-          title="Aparência"
-          hint="O tema acompanha o sistema por padrão."
-        />
+        <SectionTitle title="Aparência" hint="O tema acompanha o sistema por padrão." />
         <Card>
           <div className="mb-4 flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-2 text-muted">
@@ -86,32 +116,35 @@ export function PerfilView() {
       <section>
         <SectionTitle title="Notificações" />
         <Card inset className="divide-y divide-line">
-          {[
-            {
-              label: 'Alterações no protocolo',
-              hint: 'Quando seu médico aprovar um ajuste.',
-              value: notifPlano,
-              set: setNotifPlano,
-            },
-            {
-              label: 'Lembrete de treino',
-              hint: 'Todo dia, 30 minutos antes do horário.',
-              value: notifTreino,
-              set: setNotifTreino,
-            },
-            {
-              label: 'Resultados de exames',
-              hint: 'Assim que um laboratório sincronizar.',
-              value: notifExames,
-              set: setNotifExames,
-            },
-          ].map((n) => (
-            <div key={n.label} className="flex items-center gap-4 px-4 py-3.5">
+          {(
+            [
+              {
+                key: 'protocolChanges' as const,
+                label: 'Alterações no protocolo',
+                hint: 'Quando seu profissional aprovar um ajuste.',
+              },
+              {
+                key: 'workoutReminder' as const,
+                label: 'Lembrete de treino',
+                hint: 'Todo dia, 30 minutos antes do horário.',
+              },
+              {
+                key: 'examResults' as const,
+                label: 'Resultados de exames',
+                hint: 'Assim que um laboratório sincronizar.',
+              },
+            ]
+          ).map((n) => (
+            <div key={n.key} className="flex items-center gap-4 px-4 py-3.5">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">{n.label}</p>
                 <p className="mt-0.5 text-sm text-muted">{n.hint}</p>
               </div>
-              <Switch checked={n.value} onChange={n.set} label={n.label} />
+              <Switch
+                checked={notif[n.key]}
+                onChange={(v) => savePrefs({ ...notif, [n.key]: v })}
+                label={n.label}
+              />
             </div>
           ))}
         </Card>
@@ -122,7 +155,7 @@ export function PerfilView() {
         <SectionTitle title="Conta e dados" />
         <Card inset className="divide-y divide-line overflow-hidden">
           {[
-            { icon: CreditCard, label: 'Assinatura e pagamento', hint: 'Próxima cobrança em 12 dias' },
+            { icon: CreditCard, label: 'Assinatura e pagamento', hint: 'Plano e faturas' },
             { icon: FileText, label: 'Meus documentos', hint: 'Exames, laudos e receitas' },
             { icon: Download, label: 'Exportar meus dados', hint: 'Arquivo completo em PDF' },
             { icon: Shield, label: 'Privacidade e consentimento', hint: 'LGPD e compartilhamento' },
@@ -161,28 +194,18 @@ export function PerfilView() {
         </Button>
       </Card>
 
-      {/* ------------------------------------------------ trocar visão */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Link href="/pro" className="tap">
-          <Card className="flex h-full items-center gap-3 transition-colors hover:border-line-strong">
-            <UserRoundCog className="h-5 w-5 shrink-0 text-brand" aria-hidden />
-            <span className="min-w-0 flex-1 text-sm font-semibold">
-              Ver como profissional
-            </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
-          </Card>
-        </Link>
-
-        <Button variant="secondary" icon={LogOut} className="h-full py-4 text-danger">
-          Sair da conta
-        </Button>
-      </div>
+      <Card inset className="p-4">
+        <SignOutButton />
+      </Card>
 
       <p className="pb-2 text-center text-2xs text-subtle">
         Ryse · versão 1.0.0 · feito para Android e iOS
       </p>
 
-      {/* ------------------------------------------------ folha de instalação */}
+      {/* ------------------------------------------------ editar dados */}
+      <EditSheet open={editOpen} onClose={() => setEditOpen(false)} user={user} />
+
+      {/* ------------------------------------------------ instalação */}
       <Sheet
         open={install}
         onClose={() => setInstall(false)}
@@ -210,7 +233,7 @@ export function PerfilView() {
             <ol className="space-y-2 text-sm text-muted">
               <li>1. Toque no botão Compartilhar, na barra inferior.</li>
               <li>2. Role e escolha “Adicionar à Tela de Início”.</li>
-              <li>3. Toque em “Adicionar”. O app abre em tela cheia, sem barra do Safari.</li>
+              <li>3. Toque em “Adicionar”. O app abre em tela cheia.</li>
             </ol>
           </div>
 
@@ -224,5 +247,86 @@ export function PerfilView() {
         </div>
       </Sheet>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------ EDITAR DADOS */
+
+function EditSheet({
+  open,
+  onClose,
+  user,
+}: {
+  open: boolean;
+  onClose: () => void;
+  user: SessionUser;
+}) {
+  const [fullName, setFullName] = useState(user.fullName);
+  const [height, setHeight] = useState(user.heightCm ? String(user.heightCm) : '');
+  const [goal, setGoal] = useState(user.goal ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  const save = () => {
+    setError(null);
+    startSaving(async () => {
+      const result = await updateProfile({
+        fullName,
+        heightCm: height ? Number(height.replace(',', '.')) : null,
+        goal: goal.trim() || null,
+      });
+
+      if (!result.ok) {
+        setError(result.error ?? 'Não foi possível salvar.');
+        return;
+      }
+      onClose();
+    });
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Editar dados"
+      description="Alterações no plano clínico são feitas pelo seu profissional."
+      footer={
+        <Button block onClick={save} disabled={saving} icon={saving ? undefined : Check}>
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              Salvando…
+            </>
+          ) : (
+            'Salvar alterações'
+          )}
+        </Button>
+      }
+    >
+      <div className="space-y-4 pb-4">
+        {error && (
+          <p role="alert" className="rounded-xl border border-danger/25 bg-danger-soft p-3 text-sm font-medium text-danger">
+            {error}
+          </p>
+        )}
+
+        <Field label="Nome completo">
+          <Input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        </Field>
+
+        <Field label="Altura (cm)">
+          <Input
+            inputMode="numeric"
+            value={height}
+            placeholder="178"
+            onChange={(e) => setHeight(e.target.value.replace(/[^\d]/g, ''))}
+          />
+        </Field>
+
+        <Field label="Objetivo" hint="Ex.: hipertrofia limpa, emagrecimento, longevidade.">
+          <Input value={goal} onChange={(e) => setGoal(e.target.value)} />
+        </Field>
+      </div>
+    </Sheet>
   );
 }

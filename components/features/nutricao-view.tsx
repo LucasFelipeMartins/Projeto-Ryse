@@ -1,66 +1,73 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import {
-  ArrowLeftRight,
-  BrainCircuit,
-  Check,
-  ChevronDown,
-  Flame,
-  Info,
-  Utensils,
-} from 'lucide-react';
-import {
-  Badge,
-  Button,
-  Card,
-  PageIntro,
-  Progress,
-  SectionTitle,
-} from '@/components/ui';
-import { CheckCircle, ChipRow, Sheet } from '@/components/ui/interactive';
+import { useOptimistic, useState, useTransition } from 'react';
+import { ArrowLeftRight, BrainCircuit, Check, ChevronDown, Flame, Info, Utensils } from 'lucide-react';
+import { Badge, Button, Card, EmptyState, PageIntro, Progress, SectionTitle } from '@/components/ui';
+import { CheckCircle, Sheet } from '@/components/ui/interactive';
 import { Ring } from '@/components/charts';
-import { macros, meals as seedMeals, me, type Meal } from '@/lib/data';
+import { toggleMeal } from '@/lib/actions/patient';
+import type { MealView, NutritionView } from '@/lib/queries/patient';
 import { cn } from '@/lib/utils';
 
-const DAYS = [
-  { value: 'seg', label: 'Seg' },
-  { value: 'ter', label: 'Ter' },
-  { value: 'qua', label: 'Qua' },
-  { value: 'qui', label: 'Hoje' },
-  { value: 'sex', label: 'Sex' },
-  { value: 'sab', label: 'Sáb' },
-  { value: 'dom', label: 'Dom' },
-] as const;
+export function NutricaoView({ data }: { data: NutritionView }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [swapMeal, setSwapMeal] = useState<MealView | null>(null);
+  const [, startTransition] = useTransition();
 
-type Day = (typeof DAYS)[number]['value'];
-
-export function NutricaoView() {
-  const [day, setDay] = useState<Day>('qui');
-  const [meals, setMeals] = useState<Meal[]>(seedMeals);
-  const [openId, setOpenId] = useState<string | null>('m3');
-  const [swapMeal, setSwapMeal] = useState<Meal | null>(null);
-
-  const toggle = (id: string) =>
-    setMeals((prev) => prev.map((m) => (m.id === id ? { ...m, done: !m.done } : m)));
-
-  const eaten = useMemo(
-    () => meals.filter((m) => m.done).reduce((sum, m) => sum + m.kcal, 0),
-    [meals],
+  // A marcação responde na hora; o servidor confirma logo em seguida.
+  const [meals, setOptimistic] = useOptimistic(
+    data.meals,
+    (current: MealView[], toggled: { id: string; done: boolean }) =>
+      current.map((m) => (m.id === toggled.id ? { ...m, done: toggled.done } : m)),
   );
-  const total = useMemo(() => meals.reduce((sum, m) => sum + m.kcal, 0), [meals]);
-  const doneCount = meals.filter((m) => m.done).length;
+
+  const onToggle = (meal: MealView) => {
+    const next = !meal.done;
+    startTransition(async () => {
+      setOptimistic({ id: meal.id, done: next });
+      await toggleMeal(meal.id, next);
+    });
+  };
+
+  if (!data.planId) {
+    return (
+      <div className="space-y-6">
+        <PageIntro title="Meu cardápio" />
+        <Card>
+          <EmptyState
+            icon={Utensils}
+            title="Nenhum plano nutricional ativo"
+            description="Assim que seu profissional montar o cardápio, ele aparece aqui com as refeições do dia."
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  const consumed = meals.filter((m) => m.done);
+  const kcal = consumed.reduce((s, m) => s + m.kcal, 0);
+  const macros = consumed.reduce(
+    (acc, m) => ({
+      p: acc.p + m.macros.p,
+      c: acc.c + m.macros.c,
+      g: acc.g + m.macros.g,
+    }),
+    { p: 0, c: 0, g: 0 },
+  );
+
+  const rows = [
+    { label: 'Proteínas', current: macros.p, target: data.target.protein },
+    { label: 'Carboidratos', current: macros.c, target: data.target.carb },
+    { label: 'Gorduras', current: macros.g, target: data.target.fat },
+  ];
 
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow={me.plan}
+        eyebrow={data.title}
         title="Meu cardápio"
-        description="Protocolo de hipertrofia limpa, ajustado ao seu último check-in."
+        description="Marque cada refeição conforme for comendo — é isso que alimenta a análise."
       />
-
-      {/* Dias da semana: fila rolável — melhor que um select no mobile. */}
-      <ChipRow options={DAYS as unknown as { value: Day; label: string }[]} value={day} onChange={setDay} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* ------------------------------------------------ resumo do dia */}
@@ -68,27 +75,26 @@ export function NutricaoView() {
           <div className="flex items-center gap-5">
             <Ring
               size={104}
-              value={eaten}
-              max={total}
-              display={eaten.toLocaleString('pt-BR')}
-              unit={`de ${total.toLocaleString('pt-BR')} kcal`}
+              value={kcal}
+              max={data.target.kcal || 1}
+              display={kcal.toLocaleString('pt-BR')}
+              unit={`de ${data.target.kcal.toLocaleString('pt-BR')} kcal`}
               label="Consumido"
               color="brand"
             />
             <div className="min-w-0 flex-1 space-y-3">
-              {macros.map((m, i) => (
+              {rows.map((m, i) => (
                 <div key={m.label}>
                   <div className="mb-1 flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium">{m.label}</span>
                     <span className="shrink-0 text-sm tabular-nums text-muted">
-                      {m.current}/{m.target}
-                      {m.unit}
+                      {m.current}/{m.target}g
                     </span>
                   </div>
                   <Progress
-                    value={(m.current / m.target) * 100}
+                    value={m.target ? (m.current / m.target) * 100 : 0}
                     tone={(['cat1', 'cat2', 'cat3'] as const)[i]}
-                    label={`${m.label}: ${m.current} de ${m.target}${m.unit}`}
+                    label={`${m.label}: ${m.current} de ${m.target}g`}
                   />
                 </div>
               ))}
@@ -98,8 +104,10 @@ export function NutricaoView() {
           <div className="mt-5 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3.5 py-3">
             <Flame className="h-4 w-4 shrink-0 text-brand" aria-hidden />
             <p className="text-sm text-muted">
-              <strong className="text-fg">{doneCount} de {meals.length}</strong> refeições
-              registradas hoje.
+              <strong className="text-fg">
+                {consumed.length} de {meals.length}
+              </strong>{' '}
+              refeições registradas hoje.
             </p>
           </div>
         </Card>
@@ -120,8 +128,8 @@ export function NutricaoView() {
                   <div className="flex items-start gap-3 p-4">
                     <CheckCircle
                       checked={meal.done}
-                      onChange={() => toggle(meal.id)}
-                      label={`Marcar ${meal.slot} como registrada`}
+                      onChange={() => onToggle(meal)}
+                      label={`Marcar ${meal.label} como registrada`}
                     />
 
                     <button
@@ -131,7 +139,7 @@ export function NutricaoView() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-2xs font-bold uppercase tracking-wider text-subtle">
-                          {meal.slot}
+                          {meal.label}
                         </span>
                         <span className="text-2xs text-subtle">·</span>
                         <span className="text-2xs font-medium text-subtle">{meal.time}</span>
@@ -202,16 +210,15 @@ export function NutricaoView() {
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-text" aria-hidden />
         <p className="text-sm text-muted">
           As substituições sugeridas mantêm calorias e carga glicêmica equivalentes.
-          Trocas fora da lista precisam de aprovação de {me.coach}.
+          Trocas fora da lista precisam de aprovação do seu profissional.
         </p>
       </Card>
 
-      {/* ------------------------------------------------ folha de troca */}
       <Sheet
         open={swapMeal !== null}
         onClose={() => setSwapMeal(null)}
         title="Substituir alimento"
-        description={swapMeal ? `${swapMeal.slot} · ${swapMeal.title}` : undefined}
+        description={swapMeal ? `${swapMeal.label} · ${swapMeal.title}` : undefined}
         footer={
           <Button block onClick={() => setSwapMeal(null)}>
             Confirmar substituição

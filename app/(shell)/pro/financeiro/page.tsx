@@ -1,22 +1,28 @@
-import { Download, Receipt } from 'lucide-react';
+import { Download, Receipt, Wallet } from 'lucide-react';
 import {
   Badge,
   Button,
   Card,
+  EmptyState,
   PageIntro,
   SectionTitle,
   Stat,
 } from '@/components/ui';
 import { BarChart, StackedBar } from '@/components/charts';
-import { financeKpis, planMix, revenueSeries, transactions } from '@/lib/data';
-import { brl } from '@/lib/utils';
+import { getFinance } from '@/lib/queries/pro';
+import { requireProfessional } from '@/lib/supabase/server';
+import { centsToBRL } from '@/lib/utils';
 
 export const metadata = { title: 'Faturamento' };
 
-const months = revenueSeries.map((r) => r.month);
-const values = revenueSeries.map((r) => r.value);
+export default async function FinanceiroPage() {
+  const pro = await requireProfessional();
+  const { kpis, planMix, revenueSeries, transactions } = await getFinance(pro.id);
 
-export default function FinanceiroPage() {
+  const months = revenueSeries.map((r) => r.month);
+  const values = revenueSeries.map((r) => r.value);
+  const hasRevenue = values.some((v) => v > 0);
+
   return (
     <div className="space-y-6">
       <PageIntro
@@ -33,16 +39,15 @@ export default function FinanceiroPage() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {financeKpis.map((kpi) => (
-          <Stat
-            key={kpi.label}
-            label={kpi.label}
-            value={kpi.value}
-            delta={kpi.delta}
-            up={kpi.up}
-            hint="vs. mês anterior"
-          />
-        ))}
+        <Stat label="MRR" value={centsToBRL(kpis.mrrCents)} hint="assinaturas ativas" />
+        <Stat label="Assinaturas ativas" value={String(kpis.activeSubs)} />
+        <Stat label="Ticket médio" value={centsToBRL(kpis.avgTicketCents)} />
+        <Stat
+          label="Falha de cobrança"
+          value={`${kpis.failureRate.toString().replace('.', ',')}%`}
+          delta={kpis.failureRate > 5 ? 'Acima do esperado' : 'Sob controle'}
+          up={kpis.failureRate <= 5}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -54,16 +59,25 @@ export default function FinanceiroPage() {
               Últimos 8 meses, em milhares de reais.
             </p>
           </div>
-          <BarChart
-            data={values}
-            labels={months}
-            format={{ prefix: 'R$ ', decimals: 1, suffix: ' mil' }}
-            height={200}
-            color="brand"
-            caption={`Receita mensal de março a outubro, subindo de R$ ${values[0]} mil para R$ ${
-              values[values.length - 1]
-            } mil.`}
-          />
+
+          {hasRevenue ? (
+            <BarChart
+              data={values}
+              labels={months}
+              format={{ prefix: 'R$ ', decimals: 1, suffix: ' mil' }}
+              height={200}
+              color="brand"
+              caption={`Receita mensal paga, de R$ ${values[0]} mil a R$ ${
+                values[values.length - 1]
+              } mil.`}
+            />
+          ) : (
+            <EmptyState
+              icon={Wallet}
+              title="Nenhuma cobrança registrada"
+              description="A curva de receita aparece após a primeira transação paga."
+            />
+          )}
         </Card>
 
         {/* Três categorias: legenda + rótulo direto acompanham cada fatia. */}
@@ -72,88 +86,89 @@ export default function FinanceiroPage() {
             <h2 className="text-base font-semibold tracking-tight">
               Distribuição de planos
             </h2>
-            <p className="mt-0.5 text-sm text-muted">842 assinaturas ativas.</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {kpis.activeSubs} assinaturas ativas.
+            </p>
           </div>
-          <StackedBar
-            segments={planMix.map((p) => ({
-              name: p.name,
-              value: p.count,
-              percent: p.percent,
-            }))}
-          />
+
+          {planMix.length > 0 ? (
+            <StackedBar segments={planMix} />
+          ) : (
+            <EmptyState icon={Wallet} title="Sem assinaturas ativas" />
+          )}
         </Card>
       </div>
 
       {/* ------------------------------------------------ transações */}
       <section>
-        <SectionTitle
-          title="Últimas transações"
-          action={
-            <button className="text-sm font-semibold text-brand-text hover:underline">
-              Ver todas
-            </button>
-          }
-        />
+        <SectionTitle title="Últimas transações" />
 
-        {/* MOBILE: lista */}
-        <Card inset className="divide-y divide-line lg:hidden">
-          {transactions.map((t) => (
-            <div key={`${t.name}-${t.date}`} className="flex items-center gap-3 px-4 py-3.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{t.name}</p>
-                <p className="mt-0.5 truncate text-sm text-muted">
-                  {t.plan} · {t.date}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-sm font-bold tabular-nums">{brl(t.amount)}</p>
-                <Badge tone={t.tone} className="mt-1">
-                  {t.status}
-                </Badge>
-              </div>
-            </div>
-          ))}
-        </Card>
+        {transactions.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={Receipt}
+              title="Nenhuma transação"
+              description="As cobranças dos seus pacientes aparecem aqui."
+            />
+          </Card>
+        ) : (
+          <>
+            {/* MOBILE: lista */}
+            <Card inset className="divide-y divide-line lg:hidden">
+              {transactions.map((t, i) => (
+                <div key={`${t.name}-${i}`} className="flex items-center gap-3 px-4 py-3.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{t.name}</p>
+                    <p className="mt-0.5 truncate text-sm text-muted">{t.date}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-bold tabular-nums">
+                      {centsToBRL(t.amountCents)}
+                    </p>
+                    <Badge tone={t.tone} className="mt-1">
+                      {t.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </Card>
 
-        {/* DESKTOP: tabela */}
-        <Card inset className="hidden overflow-hidden lg:block">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <caption className="sr-only">
-                Últimas transações com paciente, plano, valor, status e data.
-              </caption>
-              <thead>
-                <tr className="border-b border-line bg-surface-2 text-2xs font-bold uppercase tracking-wider text-subtle">
-                  <th scope="col" className="px-4 py-3">Paciente</th>
-                  <th scope="col" className="px-4 py-3">Plano</th>
-                  <th scope="col" className="px-4 py-3">Valor</th>
-                  <th scope="col" className="px-4 py-3">Status</th>
-                  <th scope="col" className="px-4 py-3 text-right">Data</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {transactions.map((t) => (
-                  <tr
-                    key={`${t.name}-${t.date}`}
-                    className="transition-colors hover:bg-surface-2"
-                  >
-                    <th scope="row" className="px-4 py-3 font-semibold">
-                      {t.name}
-                    </th>
-                    <td className="px-4 py-3 text-muted">{t.plan}</td>
-                    <td className="px-4 py-3 font-semibold tabular-nums">
-                      {brl(t.amount)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={t.tone}>{t.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-right text-muted">{t.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+            {/* DESKTOP: tabela */}
+            <Card inset className="hidden overflow-hidden lg:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <caption className="sr-only">
+                    Últimas transações com paciente, valor, status e data.
+                  </caption>
+                  <thead>
+                    <tr className="border-b border-line bg-surface-2 text-2xs font-bold uppercase tracking-wider text-subtle">
+                      <th scope="col" className="px-4 py-3">Paciente</th>
+                      <th scope="col" className="px-4 py-3">Valor</th>
+                      <th scope="col" className="px-4 py-3">Status</th>
+                      <th scope="col" className="px-4 py-3 text-right">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {transactions.map((t, i) => (
+                      <tr key={`${t.name}-${i}`} className="transition-colors hover:bg-surface-2">
+                        <th scope="row" className="px-4 py-3 font-semibold">
+                          {t.name}
+                        </th>
+                        <td className="px-4 py-3 font-semibold tabular-nums">
+                          {centsToBRL(t.amountCents)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge tone={t.tone}>{t.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted">{t.date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>
+        )}
       </section>
 
       <div className="flex gap-3 sm:hidden">

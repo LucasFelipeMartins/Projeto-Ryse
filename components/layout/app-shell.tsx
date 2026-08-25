@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useTransition } from 'react';
 import {
   Bell,
   ChevronLeft,
+  LogOut,
   MoreHorizontal,
   Search,
-  Sparkles,
-  UserRoundCog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -19,10 +18,10 @@ import {
   proMoreItems,
   proNav,
   proTabs,
-  roleOf,
   type NavItem,
 } from '@/lib/nav';
-import { me, pro } from '@/lib/data';
+import { signOut } from '@/lib/actions/auth';
+import type { SessionUser } from '@/lib/supabase/server';
 import { Avatar } from '@/components/ui';
 import { Sheet, ThemeToggle, useDismissOnRouteChange } from '@/components/ui/interactive';
 import { RyseMark, RyseWordmark } from '@/components/layout/brand';
@@ -48,9 +47,7 @@ const TITLES: Record<string, string> = {
 };
 
 /** Rotas de detalhe mostram voltar em vez do título raiz. */
-function isDetail(pathname: string) {
-  return TITLES[pathname] === undefined;
-}
+const isDetail = (pathname: string) => TITLES[pathname] === undefined;
 
 function titleFor(pathname: string) {
   if (TITLES[pathname]) return TITLES[pathname];
@@ -62,11 +59,18 @@ function titleFor(pathname: string) {
 
 /* ----------------------------------------------------------------- SHELL */
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  user,
+  children,
+}: {
+  user: SessionUser;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
-  const role = roleOf(pathname);
-  const nav = role === 'pro' ? proNav : patientNav;
-  const tabs = role === 'pro' ? proTabs : patientTabs;
+  // O papel vem da sessão, nunca da URL.
+  const isPro = user.role === 'profissional';
+  const nav = isPro ? proNav : patientNav;
+  const tabs = isPro ? proTabs : patientTabs;
 
   const [moreOpen, setMoreOpen] = useState(false);
   const closeMore = useCallback(() => setMoreOpen(false), []);
@@ -74,11 +78,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-canvas">
-      <Sidebar nav={nav} role={role} pathname={pathname} />
+      <Sidebar nav={nav} user={user} pathname={pathname} />
 
       {/* lg:pl-64 abre espaço para a sidebar fixa do desktop */}
       <div className="lg:pl-64">
-        <TopBar pathname={pathname} role={role} />
+        <TopBar pathname={pathname} isPro={isPro} />
 
         <main
           id="conteudo"
@@ -92,43 +96,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      <BottomNav tabs={tabs} pathname={pathname} role={role} onMore={() => setMoreOpen(true)} />
+      <BottomNav tabs={tabs} pathname={pathname} isPro={isPro} onMore={() => setMoreOpen(true)} />
 
-      <Sheet
-        open={moreOpen}
-        onClose={closeMore}
-        title="Mais"
-        description="Módulos de gestão e alternância de perfil."
-      >
-        <div className="divide-y divide-line pb-4">
-          {proMoreItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="tap flex items-center gap-3 py-3.5"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-muted">
-                <item.icon className="h-5 w-5" aria-hidden />
-              </span>
-              <span className="flex-1 text-sm font-semibold">{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </Sheet>
+      {isPro && (
+        <Sheet
+          open={moreOpen}
+          onClose={closeMore}
+          title="Mais"
+          description="Módulos de gestão da clínica."
+        >
+          <div className="divide-y divide-line pb-4">
+            {proMoreItems.map((item) => (
+              <Link key={item.href} href={item.href} className="tap flex items-center gap-3 py-3.5">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-muted">
+                  <item.icon className="h-5 w-5" aria-hidden />
+                </span>
+                <span className="flex-1 text-sm font-semibold">{item.label}</span>
+              </Link>
+            ))}
+            <SignOutButton className="w-full py-3.5" />
+          </div>
+        </Sheet>
+      )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ SAIR */
+
+export function SignOutButton({ className }: { className?: string }) {
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <button
+      onClick={() => startTransition(() => void signOut())}
+      disabled={pending}
+      className={cn(
+        'tap flex items-center gap-3 text-left text-sm font-semibold text-danger disabled:opacity-60',
+        className,
+      )}
+    >
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2">
+        <LogOut className="h-5 w-5" aria-hidden />
+      </span>
+      <span className="flex-1">{pending ? 'Saindo…' : 'Sair da conta'}</span>
+    </button>
   );
 }
 
 /* --------------------------------------------------------------- TOP BAR */
 
-function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente' }) {
+function TopBar({ pathname, isPro }: { pathname: string; isPro: boolean }) {
   const router = useRouter();
   const detail = isDetail(pathname);
 
   return (
     <header className="glass sticky top-0 z-40 pt-safe">
       <div className="mx-auto flex h-header w-full max-w-6xl items-center gap-2 px-2 sm:px-4 lg:px-8">
-        {/* Mobile: voltar em telas de detalhe, marca nas telas raiz */}
         {detail ? (
           <button
             onClick={() => router.back()}
@@ -138,7 +162,7 @@ function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente'
             <ChevronLeft className="h-6 w-6" aria-hidden />
           </button>
         ) : (
-          <Link href={role === 'pro' ? '/pro' : '/inicio'} className="ml-1.5 lg:hidden">
+          <Link href={isPro ? '/pro' : '/inicio'} className="ml-1.5 lg:hidden">
             <RyseMark className="h-8 w-8" />
             <span className="sr-only">Ryse — início</span>
           </Link>
@@ -146,8 +170,8 @@ function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente'
 
         <h1
           className={cn(
-            'min-w-0 flex-1 truncate text-base font-bold tracking-tight',
-            detail ? 'lg:text-lg' : 'ml-1 lg:ml-0 lg:text-lg',
+            'min-w-0 flex-1 truncate text-base font-bold tracking-tight lg:text-lg',
+            !detail && 'ml-1 lg:ml-0',
           )}
         >
           {titleFor(pathname)}
@@ -161,7 +185,7 @@ function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente'
           />
           <input
             type="search"
-            placeholder={role === 'pro' ? 'Buscar paciente ou protocolo' : 'Buscar no meu plano'}
+            placeholder={isPro ? 'Buscar paciente ou protocolo' : 'Buscar no meu plano'}
             aria-label="Buscar"
             className="h-10 w-72 rounded-xl border border-line bg-surface pl-9 pr-3 text-sm placeholder:text-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
           />
@@ -170,7 +194,7 @@ function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente'
         <ThemeToggle />
 
         <Link
-          href={role === 'pro' ? '/pro/mensagens' : '/mensagens'}
+          href={isPro ? '/pro/mensagens' : '/mensagens'}
           aria-label="Notificações"
           className="tap relative flex h-10 w-10 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
         >
@@ -187,12 +211,12 @@ function TopBar({ pathname, role }: { pathname: string; role: 'pro' | 'paciente'
 function BottomNav({
   tabs,
   pathname,
-  role,
+  isPro,
   onMore,
 }: {
   tabs: NavItem[];
   pathname: string;
-  role: 'pro' | 'paciente';
+  isPro: boolean;
   onMore: () => void;
 }) {
   return (
@@ -219,11 +243,6 @@ function BottomNav({
                     strokeWidth={active ? 2.4 : 1.9}
                     aria-hidden
                   />
-                  {tab.badge ? (
-                    <span className="absolute -right-2 -top-1 min-w-[16px] rounded-full bg-brand px-1 text-center text-[10px] font-bold leading-4 text-brand-on">
-                      {tab.badge > 9 ? '9+' : tab.badge}
-                    </span>
-                  ) : null}
                 </span>
                 <span
                   className={cn(
@@ -238,7 +257,7 @@ function BottomNav({
           );
         })}
 
-        {role === 'pro' && (
+        {isPro && (
           <li className="flex-1">
             <button
               onClick={onMore}
@@ -260,14 +279,14 @@ function BottomNav({
 
 function Sidebar({
   nav,
-  role,
+  user,
   pathname,
 }: {
   nav: { group: string; items: NavItem[] }[];
-  role: 'pro' | 'paciente';
+  user: SessionUser;
   pathname: string;
 }) {
-  const person = role === 'pro' ? pro : { name: me.name, role: me.plan };
+  const isPro = user.role === 'profissional';
 
   return (
     <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 flex-col border-r border-line bg-surface lg:flex">
@@ -275,7 +294,7 @@ function Sidebar({
         <RyseMark className="h-8 w-8" />
         <RyseWordmark className="text-base text-fg" />
         <span className="ml-auto rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-          {role === 'pro' ? 'Pro' : 'App'}
+          {isPro ? 'Pro' : 'App'}
         </span>
       </div>
 
@@ -305,16 +324,6 @@ function Sidebar({
                       )}
                       <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
                       <span className="flex-1 truncate">{item.label}</span>
-                      {item.badge ? (
-                        <span
-                          className={cn(
-                            'rounded-full px-1.5 text-[10px] font-bold leading-5',
-                            active ? 'bg-brand text-brand-on' : 'bg-surface-3 text-muted',
-                          )}
-                        >
-                          {item.badge}
-                        </span>
-                      ) : null}
                     </Link>
                   </li>
                 );
@@ -326,42 +335,20 @@ function Sidebar({
 
       <div className="border-t border-line p-3">
         <Link
-          href={role === 'pro' ? '/inicio' : '/pro'}
-          className="tap mb-2 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm font-semibold text-muted transition-colors hover:text-fg"
-        >
-          <UserRoundCog className="h-4 w-4" aria-hidden />
-          Ver como {role === 'pro' ? 'paciente' : 'profissional'}
-        </Link>
-
-        <Link
-          href={role === 'pro' ? '/pro/config' : '/perfil'}
+          href={isPro ? '/pro/config' : '/perfil'}
           className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2"
         >
-          <Avatar name={person.name} size="sm" />
+          <Avatar name={user.fullName} size="sm" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{person.name}</p>
-            <p className="truncate text-xs text-muted">{person.role}</p>
+            <p className="truncate text-sm font-semibold">{user.fullName}</p>
+            <p className="truncate text-xs text-muted">
+              {isPro ? (user.specialty ?? 'Profissional') : (user.goal ?? user.email)}
+            </p>
           </div>
         </Link>
+
+        <SignOutButton className="mt-1 px-2 py-1.5 text-xs" />
       </div>
     </aside>
-  );
-}
-
-/* ------------------------------------------------------- BANNER DE PERFIL */
-
-/** Faixa discreta que permite alternar entre as duas visões no mobile. */
-export function RoleSwitchBanner({ to }: { to: 'pro' | 'paciente' }) {
-  return (
-    <Link
-      href={to === 'pro' ? '/pro' : '/inicio'}
-      className="tap mb-4 flex items-center gap-2.5 rounded-xl border border-dashed border-line bg-surface-2 px-3.5 py-2.5 lg:hidden"
-    >
-      <Sparkles className="h-4 w-4 shrink-0 text-brand" aria-hidden />
-      <span className="flex-1 text-sm font-medium text-muted">
-        Alternar para a visão {to === 'pro' ? 'do profissional' : 'do paciente'}
-      </span>
-      <span className="text-sm font-bold text-brand-text">Abrir</span>
-    </Link>
   );
 }

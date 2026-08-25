@@ -4,23 +4,23 @@ import {
   BrainCircuit,
   ChevronRight,
   FileText,
+  Inbox,
   UserPlus,
-  Users,
 } from 'lucide-react';
 import {
   Avatar,
   Badge,
   Button,
-  ButtonLink,
   Card,
+  EmptyState,
   PageIntro,
   SectionTitle,
   Stat,
 } from '@/components/ui';
 import { BarChart, LineChart } from '@/components/charts';
-import { RoleSwitchBanner } from '@/components/layout/app-shell';
-import { activityLog, engagementSeries, proKpis, reviewQueue } from '@/lib/data';
-import { cn } from '@/lib/utils';
+import { requireProfessional } from '@/lib/supabase/server';
+import { getActivity, getDashboard, getReviewQueue } from '@/lib/queries/pro';
+import { centsToBRL, cn, greeting } from '@/lib/utils';
 
 export const metadata = { title: 'Painel' };
 
@@ -32,16 +32,29 @@ const toneDot: Record<string, string> = {
   neutral: 'bg-subtle',
 };
 
-const weeks = engagementSeries.map((d) => d.week);
-const adherence = engagementSeries.map((d) => d.adherence);
-const interventions = engagementSeries.map((d) => d.ai);
+export default async function ProDashboardPage() {
+  const pro = await requireProfessional();
 
-export default function ProDashboardPage() {
+  const [dashboard, activity, queue] = await Promise.all([
+    getDashboard(pro.id),
+    getActivity(pro.id),
+    getReviewQueue(pro.id),
+  ]);
+
+  const { kpis, weekLabels, adherenceSeries, interventions } = dashboard;
+  const lastName = pro.fullName.split(' ').slice(-1)[0];
+
+  const today = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
   return (
     <div className="space-y-6">
       <PageIntro
-        eyebrow="Quinta, 25 de agosto"
-        title="Bom dia, Dr. Mendes"
+        eyebrow={today.charAt(0).toUpperCase() + today.slice(1)}
+        title={`${greeting()}, ${lastName}`}
         description="Resumo da sua clínica hoje."
         action={
           <div className="hidden gap-2 sm:flex">
@@ -53,21 +66,22 @@ export default function ProDashboardPage() {
         }
       />
 
-      <RoleSwitchBanner to="paciente" />
-
       {/* ------------------------------------------------ indicadores */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {proKpis.map((kpi) => (
-          <Stat
-            key={kpi.label}
-            label={kpi.label}
-            value={kpi.value}
-            delta={kpi.delta}
-            up={kpi.up}
-            alert={kpi.alert}
-            hint={kpi.alert ? undefined : kpi.hint}
-          />
-        ))}
+        <Stat label="Pacientes ativos" value={String(kpis.activePatients)} />
+        <Stat
+          label="Revisões pendentes"
+          value={String(kpis.pendingReviews)}
+          delta={kpis.pendingReviews > 0 ? 'Ação requerida' : 'Fila vazia'}
+          alert={kpis.pendingReviews > 0}
+          up={kpis.pendingReviews === 0}
+        />
+        <Stat
+          label="Adesão média"
+          value={kpis.avgAdherence > 0 ? `${kpis.avgAdherence}%` : '—'}
+          hint="protocolos ativos"
+        />
+        <Stat label="MRR" value={centsToBRL(kpis.mrrCents)} hint="assinaturas ativas" />
       </div>
 
       {/*
@@ -86,20 +100,20 @@ export default function ProDashboardPage() {
               <h3 className="text-sm font-semibold">Adesão média ao protocolo</h3>
               <p className="mt-0.5 text-sm text-muted">
                 <strong className="tabular-nums text-fg">
-                  {adherence[adherence.length - 1]}%
+                  {adherenceSeries[adherenceSeries.length - 1]}%
                 </strong>{' '}
                 na última semana
               </p>
             </div>
             <LineChart
-              data={adherence}
-              labels={weeks}
+              data={adherenceSeries}
+              labels={weekLabels}
               format={{ suffix: '%' }}
               height={170}
               color="brand"
               caption={`Adesão média ao protocolo por semana, de ${Math.min(
-                ...adherence,
-              )}% a ${Math.max(...adherence)}%.`}
+                ...adherenceSeries,
+              )}% a ${Math.max(...adherenceSeries)}%.`}
             />
           </Card>
 
@@ -115,7 +129,7 @@ export default function ProDashboardPage() {
             </div>
             <BarChart
               data={interventions}
-              labels={weeks}
+              labels={weekLabels}
               height={170}
               color="cat-2"
               caption={`Número de propostas de ajuste geradas pela IA por semana, de ${Math.min(
@@ -133,83 +147,94 @@ export default function ProDashboardPage() {
             title="Aguardando sua chancela"
             hint="Propostas da IA que precisam de decisão clínica."
             action={
-              <Link
-                href="/pro/revisao"
-                className="flex items-center gap-1 text-sm font-semibold text-brand-text hover:underline"
-              >
-                Ver as 14
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-              </Link>
+              queue.length > 0 ? (
+                <Link
+                  href="/pro/revisao"
+                  className="flex items-center gap-1 text-sm font-semibold text-brand-text hover:underline"
+                >
+                  Ver as {queue.length}
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                </Link>
+              ) : undefined
             }
           />
 
-          <div className="space-y-3">
-            {reviewQueue.slice(0, 3).map((c) => (
-              <Link key={c.id} href={`/pro/revisao/${c.id}`} className="tap block">
-                <Card className="transition-colors hover:border-line-strong">
-                  <div className="flex items-start gap-3">
-                    <Avatar name={c.patient} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-sm font-bold">{c.patient}</h3>
-                        <Badge tone={c.urgency === 'alta' ? 'danger' : 'warn'}>
-                          {c.urgency === 'alta' ? 'Prioridade' : 'Revisão'}
-                        </Badge>
+          {queue.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={Inbox}
+                title="Fila vazia"
+                description="Nenhuma proposta da IA aguardando decisão no momento."
+              />
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {queue.slice(0, 3).map((c) => (
+                <Link key={c.id} href={`/pro/revisao/${c.id}`} className="tap block">
+                  <Card className="transition-colors hover:border-line-strong">
+                    <div className="flex items-start gap-3">
+                      <Avatar name={c.patient} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-sm font-bold">{c.patient}</h3>
+                          <Badge tone={c.urgency === 'alta' ? 'danger' : 'warn'}>
+                            {c.urgency === 'alta' ? 'Prioridade' : 'Revisão'}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-sm text-muted">{c.trigger}</p>
+                        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs font-medium text-subtle">
+                          <span className="rounded-md bg-surface-2 px-1.5 py-0.5">
+                            {c.module}
+                          </span>
+                          <span className="flex items-center gap-1 text-brand-text">
+                            <BrainCircuit className="h-3 w-3" aria-hidden />
+                            {c.confidence}% de confiança
+                          </span>
+                          <span>{c.age}</span>
+                        </div>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-sm text-muted">{c.trigger}</p>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs font-medium text-subtle">
-                        <span className="rounded-md bg-surface-2 px-1.5 py-0.5">
-                          {c.module}
-                        </span>
-                        <span className="flex items-center gap-1 text-brand-text">
-                          <BrainCircuit className="h-3 w-3" aria-hidden />
-                          {c.confidence}% de confiança
-                        </span>
-                        <span>{c.age}</span>
-                      </div>
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-subtle" aria-hidden />
                     </div>
-                    <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-subtle" aria-hidden />
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* ------------------------------------------------ atividade */}
         <section className="lg:col-span-2">
           <SectionTitle title="Atividade da clínica" />
-          <Card inset className="divide-y divide-line">
-            {activityLog.map((log) => (
-              <div key={log.text} className="flex gap-3 px-4 py-3.5">
-                <span
-                  className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', toneDot[log.tone])}
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm leading-snug">{log.text}</p>
-                  <p className="mt-1 text-2xs font-medium text-subtle">
-                    {log.who} · {log.when}
-                  </p>
+          {activity.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={Inbox}
+                title="Sem atividade recente"
+                description="Check-ins, treinos e propostas aparecem aqui."
+              />
+            </Card>
+          ) : (
+            <Card inset className="divide-y divide-line">
+              {activity.map((log, i) => (
+                <div key={`${log.text}-${i}`} className="flex gap-3 px-4 py-3.5">
+                  <span
+                    className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', toneDot[log.tone])}
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm leading-snug">{log.text}</p>
+                    <p className="mt-1 text-2xs font-medium text-subtle">
+                      {log.who} · {log.when}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </Card>
-
-          <Card className="mt-4 flex items-center gap-3">
-            <Users className="h-5 w-5 shrink-0 text-brand" aria-hidden />
-            <p className="min-w-0 flex-1 text-sm text-muted">
-              <strong className="text-fg">18 pacientes</strong> sem check-in há mais de 7
-              dias.
-            </p>
-            <ButtonLink href="/pro/pacientes" variant="secondary" size="sm">
-              Ver
-            </ButtonLink>
-          </Card>
+              ))}
+            </Card>
+          )}
         </section>
       </div>
 
-      {/* Ações principais viram barra fixa no mobile */}
+      {/* Ações principais no rodapé do mobile */}
       <div className="flex gap-3 sm:hidden">
         <Button variant="secondary" icon={FileText} className="flex-1">
           Relatório
