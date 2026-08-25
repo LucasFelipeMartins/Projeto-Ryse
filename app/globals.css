@@ -1,0 +1,257 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   RYSE — TOKENS DE TEMA
+   Light : branco  + laranja + detalhes pretos
+   Dark  : preto   + laranja + detalhes brancos
+   Valores em canais HSL para habilitar `bg-brand/10` etc.
+   ========================================================================= */
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    /* superficies */
+    --canvas: 0 0% 98%;
+    --surface: 0 0% 100%;
+    --surface-2: 0 0% 96.5%;
+    --surface-3: 0 0% 93%;
+
+    /* texto */
+    --fg: 0 0% 5%;
+    --fg-muted: 0 0% 38%;
+    --fg-subtle: 0 0% 55%;
+
+    /* linhas */
+    --line: 0 0% 90%;
+    --line-strong: 0 0% 80%;
+
+    /* marca — laranja */
+    --brand: 25 100% 50%; /* #FF6A00 */
+    --brand-hover: 22 95% 45%;
+    --brand-on: 0 0% 6%; /* texto sobre laranja — 6.9:1 */
+    --brand-text: 18 88% 40%; /* laranja legivel sobre branco — 5.2:1 */
+    --brand-soft: 28 100% 96%;
+    --brand-line: 27 90% 86%;
+
+    /* estados */
+    --success: 152 62% 30%;
+    --success-soft: 150 55% 95%;
+    --danger: 0 70% 44%;
+    --danger-soft: 0 78% 96%;
+    --warn: 38 92% 35%;
+    --warn-soft: 45 95% 94%;
+
+    /* contraste puro */
+    --ink: 0 0% 6%;
+    --ink-on: 0 0% 100%;
+
+    /* dataviz — categorico validado p/ surface #FFFFFF (CVD ok) */
+    --cat-1: 21 90% 48%;   /* #EA580C laranja */
+    --cat-2: 175 84% 32%;  /* #0D9488 teal    */
+    --cat-3: 262 83% 58%;  /* #7C3AED violeta */
+    --chart-grid: 0 0% 88%;
+    --chart-axis: 0 0% 62%;
+
+    --shadow: 0 0% 0%;
+  }
+
+  .dark {
+    color-scheme: dark;
+
+    --canvas: 0 0% 0%;
+    --surface: 0 0% 7%;
+    --surface-2: 0 0% 11%;
+    --surface-3: 0 0% 15%;
+
+    --fg: 0 0% 98%;
+    --fg-muted: 0 0% 66%;
+    --fg-subtle: 0 0% 46%;
+
+    --line: 0 0% 16%;
+    --line-strong: 0 0% 26%;
+
+    --brand: 25 100% 52%;
+    --brand-hover: 25 100% 58%;
+    --brand-on: 0 0% 6%;
+    --brand-text: 25 100% 60%;
+    --brand-soft: 24 60% 12%;
+    --brand-line: 24 55% 24%;
+
+    --success: 152 55% 52%;
+    --success-soft: 152 40% 12%;
+    --danger: 0 84% 66%;
+    --danger-soft: 0 45% 14%;
+    --warn: 42 95% 58%;
+    --warn-soft: 40 45% 13%;
+
+    --ink: 0 0% 100%;
+    --ink-on: 0 0% 6%;
+
+    /* dataviz — passo proprio do dark, surface #121212 (CVD ok) */
+    --cat-1: 21 90% 48%;   /* #EA580C laranja */
+    --cat-2: 175 84% 32%;  /* #0D9488 teal    */
+    --cat-3: 258 90% 66%;  /* #8B5CF6 violeta */
+    --chart-grid: 0 0% 18%;
+    --chart-axis: 0 0% 42%;
+
+    --shadow: 0 0% 0%;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-canvas text-fg font-sans antialiased;
+    /* trava o "bounce" horizontal em iOS mantendo o scroll vertical */
+    overscroll-behavior-y: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* iOS: impede zoom automatico ao focar inputs (fonte < 16px) */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  @media (min-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: inherit;
+    }
+  }
+
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  ::selection {
+    @apply bg-brand/25 text-fg;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-canvas;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* barra de rolagem discreta (desktop) */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-subtle;
+  }
+
+  /* carrossel horizontal de chips no mobile */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .snap-x-chips {
+    @apply no-scrollbar flex snap-x snap-mandatory gap-2 overflow-x-auto;
+    scroll-padding-inline: 1rem;
+  }
+
+  /* vidro do header — respeita ambos os temas */
+  .glass {
+    @apply border-b border-line bg-canvas/80 backdrop-blur-xl backdrop-saturate-150;
+  }
+
+  /* area segura iOS */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-2;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full;
+    content: '';
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--fg) / 0.06),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+
+  /* gradiente de marca reutilizavel */
+  .brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand)) 0%,
+      hsl(14 92% 48%) 100%
+    );
+  }
+}
+
+@layer utilities {
+  .tap {
+    @apply active:scale-[.97] active:opacity-90 transition-transform duration-100;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .grid-lines {
+    background-image: linear-gradient(hsl(var(--line) / 0.9) 1px, transparent 1px);
+  }
+}
+
+@layer utilities {
+  /**
+   * Altura de um painel que ocupa a tela inteira dentro do shell.
+   * Desconta o header, a tab bar e as áreas seguras do iOS; no desktop a
+   * tab bar some, então sobra mais espaço.
+   */
+  .h-pane {
+    height: calc(
+      100dvh - theme(spacing.header) - theme(spacing.tabbar) - env(safe-area-inset-top) -
+        env(safe-area-inset-bottom) - 2rem
+    );
+    min-height: 26rem;
+  }
+  @media (min-width: 1024px) {
+    .h-pane {
+      height: calc(100dvh - theme(spacing.header) - 5rem);
+    }
+  }
+}

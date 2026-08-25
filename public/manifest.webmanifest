@@ -1,0 +1,26 @@
+{
+  "name": "Ryse — performance, nutrição e treino",
+  "short_name": "Ryse",
+  "description": "Nutrição, treino e exames em um só app, com inteligência clínica revisada por profissionais.",
+  "id": "/inicio",
+  "start_url": "/inicio",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": ["health", "fitness", "medical", "lifestyle"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Treino de hoje", "short_name": "Treino", "url": "/treino", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Meu cardápio", "short_name": "Nutrição", "url": "/nutricao", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Check-in semanal", "short_name": "Check-in", "url": "/checkin", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
