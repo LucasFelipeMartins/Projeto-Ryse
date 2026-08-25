@@ -95,6 +95,7 @@ export type ProfileRow = {
   crm: string | null;
   specialty: string | null;
   onboarded_at: string | null;
+  chose_solo_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -438,9 +439,19 @@ export type Database = {
         Args: { target_patient: string };
         Returns: string;
       };
-      documents_today: {
+      documents_this_week: {
         Args: { target_patient: string };
         Returns: number;
+      };
+      list_professionals: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          full_name: string;
+          specialty: string | null;
+          crm: string | null;
+          patient_count: number;
+        }[];
       };
     };
     Enums: {

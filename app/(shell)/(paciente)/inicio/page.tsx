@@ -86,19 +86,42 @@ export default async function InicioPage() {
         }
       />
 
-      {/* Sem profissional vinculado o app não tem o que prescrever ainda. */}
-      {!user.professionalId && (
-        <Card className="flex items-start gap-3 border-brand-line bg-brand-soft">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-on">
-            <UserRoundSearch className="h-5 w-5" aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold">Aguardando vínculo com um profissional</h2>
-            <p className="mt-1 text-sm text-muted">
-              Assim que sua clínica associar seu cadastro, o plano de nutrição e a ficha
-              de treino aparecem aqui. Você já pode registrar hidratação e peso.
-            </p>
-          </div>
+      {/* Ainda não decidiu: escolher profissional é o próximo passo. */}
+      {!user.professionalId && !user.choseSoloAt && (
+        <Link href="/profissionais" className="tap block">
+          <Card className="flex items-start gap-3 border-brand-line bg-brand-soft transition-colors hover:border-brand">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-on">
+              <UserRoundSearch className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold">Escolha quem vai te acompanhar</h2>
+              <p className="mt-1 text-sm text-muted">
+                O profissional revisa seus exames e monta dieta e treino. Você também
+                pode seguir só com a análise da IA.
+              </p>
+              <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-brand-text">
+                Ver profissionais
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </span>
+            </div>
+          </Card>
+        </Link>
+      )}
+
+      {/* Decidiu seguir sozinho: aviso discreto, sem insistir. */}
+      {!user.professionalId && user.choseSoloAt && (
+        <Card className="flex items-center gap-3">
+          <BrainCircuit className="h-5 w-5 shrink-0 text-brand" aria-hidden />
+          <p className="min-w-0 flex-1 text-sm text-muted">
+            Você está no modo <strong className="text-fg">só com a IA</strong>. Exames
+            enviados recebem leitura automática, sem revisão profissional.
+          </p>
+          <Link
+            href="/profissionais"
+            className="shrink-0 text-sm font-semibold text-brand-text hover:underline"
+          >
+            Mudar
+          </Link>
         </Card>
       )}
 
@@ -304,18 +327,20 @@ export default async function InicioPage() {
         </div>
       </section>
 
-      <Card className="flex flex-col items-start gap-4 border-brand-line bg-brand-soft sm:flex-row sm:items-center">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-on">
-          <BrainCircuit className="h-5 w-5" aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold">Toda alteração passa por um humano</h3>
-          <p className="mt-0.5 text-sm text-muted">
-            A IA propõe ajustes; um profissional aprova antes de qualquer mudança no seu
-            protocolo.
-          </p>
-        </div>
-      </Card>
+      {user.professionalId && (
+        <Card className="flex flex-col items-start gap-4 border-brand-line bg-brand-soft sm:flex-row sm:items-center">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-on">
+            <BrainCircuit className="h-5 w-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold">Toda alteração passa por um humano</h3>
+            <p className="mt-0.5 text-sm text-muted">
+              A IA propõe ajustes; um profissional aprova antes de qualquer mudança no
+              seu protocolo.
+            </p>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }

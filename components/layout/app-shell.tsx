@@ -35,6 +35,7 @@ const TITLES: Record<string, string> = {
   '/treino/sessao': 'Sessão de treino',
   '/progresso': 'Progresso',
   '/documentos': 'Meus documentos',
+  '/profissionais': 'Meu profissional',
   '/perfil': 'Perfil',
   '/checkin': 'Check-in semanal',
   '/mensagens': 'Mensagens',

@@ -50,27 +50,6 @@ export async function decideReview(
   return { ok: true };
 }
 
-/* -------------------------------------------------------------- PROTOCOLO */
-
-export async function toggleProtocolAi(
-  protocolId: string,
-  enabled: boolean,
-): Promise<ActionResult> {
-  const pro = await requireProfessional();
-  const supabase = await createClient();
-
-  const { error } = await supabase
-    .from('protocols')
-    .update({ ai_enabled: enabled })
-    .eq('id', protocolId)
-    .eq('professional_id', pro.id);
-
-  if (error) return { ok: false, error: 'Não foi possível atualizar o protocolo.' };
-
-  revalidatePath('/pro/protocolos');
-  return { ok: true };
-}
-
 /* ----------------------------------------------------- PERFIL DO PROFISSIONAL */
 
 export async function updateProfessionalProfile(input: {

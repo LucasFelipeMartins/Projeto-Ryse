@@ -421,17 +421,24 @@ export async function getProtocols(professionalId: string) {
   const supabase = await createClient();
   const { data } = await supabase
     .from('protocols')
-    .select('id, title, kind, ai_enabled, uses, created_at')
+    .select('id, title, kind, ai_enabled, uses, body, created_at')
     .eq('professional_id', professionalId)
-    .order('uses', { ascending: false });
+    .order('created_at', { ascending: false });
 
-  return (data ?? []).map((p) => ({
-    id: p.id,
-    title: p.title,
-    kind: p.kind as ProtocolKind,
-    aiEnabled: p.ai_enabled,
-    uses: p.uses,
-  }));
+  return (data ?? []).map((p) => {
+    // `body` é jsonb livre; normaliza com defaults em vez de confiar no formato.
+    const body = (p.body ?? {}) as Record<string, unknown>;
+
+    return {
+      id: p.id,
+      title: p.title,
+      kind: p.kind as ProtocolKind,
+      aiEnabled: p.ai_enabled,
+      uses: p.uses,
+      description: typeof body.description === 'string' ? body.description : '',
+      items: Array.isArray(body.items) ? body.items.map(String) : [],
+    };
+  });
 }
 
 /* ----------------------------------------------------------- FATURAMENTO */

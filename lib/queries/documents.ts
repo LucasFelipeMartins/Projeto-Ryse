@@ -57,9 +57,9 @@ export async function getDocuments(patientId: string): Promise<DocumentView[]> {
   }));
 }
 
-/** Quantos documentos o paciente já enviou hoje. */
-export async function getDocumentsToday(patientId: string): Promise<number> {
+/** Quantos documentos o paciente já enviou nesta semana. */
+export async function getDocumentsThisWeek(patientId: string): Promise<number> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc('documents_today', { target_patient: patientId });
+  const { data } = await supabase.rpc('documents_this_week', { target_patient: patientId });
   return data ?? 0;
 }

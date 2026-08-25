@@ -11,7 +11,11 @@
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const MAX_PDF_PAGES = 30;
-export const MAX_UPLOADS_PER_DAY = 10;
+/**
+ * Janela semanal (segunda a domingo), não diária: exame é evento esparso —
+ * quem coleta sangue não repete no dia seguinte.
+ */
+export const MAX_UPLOADS_PER_WEEK = 3;
 
 export type AllowedMime = 'application/pdf' | 'image/jpeg' | 'image/png' | 'image/webp';
 
@@ -33,7 +37,7 @@ export type ValidationError = {
     | 'assinatura_invalida'
     | 'pdf_protegido'
     | 'pdf_longo'
-    | 'limite_diario';
+    | 'limite_semanal';
   message: string;
 };
 

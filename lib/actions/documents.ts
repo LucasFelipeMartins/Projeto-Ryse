@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient, requirePatient } from '@/lib/supabase/server';
-import { validateBytes, MAX_UPLOADS_PER_DAY } from '@/lib/validation/document';
+import { validateBytes, MAX_UPLOADS_PER_WEEK } from '@/lib/validation/document';
 import { checkPdfContent } from '@/lib/validation/health-content';
 import { getAnalyzer, type AnalyzerInput } from '@/lib/ai/analyzer';
 import type { ActionResult } from '@/lib/types';
@@ -39,17 +39,17 @@ export async function uploadHealthDocument(formData: FormData): Promise<UploadRe
     };
   }
 
-  /* -------------------------------------------------- 1. limite diário */
+  /* ------------------------------------------------- 1. limite semanal */
 
-  const { data: usedToday } = await supabase.rpc('documents_today', {
+  const { data: usedThisWeek } = await supabase.rpc('documents_this_week', {
     target_patient: user.id,
   });
 
-  if ((usedToday ?? 0) >= MAX_UPLOADS_PER_DAY) {
+  if ((usedThisWeek ?? 0) >= MAX_UPLOADS_PER_WEEK) {
     return {
       ok: false,
       layer: 'limite',
-      error: `Você já enviou ${MAX_UPLOADS_PER_DAY} documentos hoje. Tente novamente amanhã.`,
+      error: `Você já enviou ${MAX_UPLOADS_PER_WEEK} documentos nesta semana. O limite se renova na segunda-feira.`,
     };
   }
 
@@ -204,7 +204,10 @@ export async function uploadHealthDocument(formData: FormData): Promise<UploadRe
       ok: true,
       documentId: doc.id,
       status: 'analisado',
-      message: 'Documento analisado. Seu profissional foi notificado para revisar.',
+      // Sem profissional vinculado, prometer revisão seria falso.
+      message: user.professionalId
+        ? 'Documento analisado. Seu profissional foi notificado para revisar.'
+        : 'Documento analisado. A leitura é automática e não substitui avaliação profissional.',
     };
   } catch {
     // Falha do provedor não descarta o arquivo: o documento passou nas

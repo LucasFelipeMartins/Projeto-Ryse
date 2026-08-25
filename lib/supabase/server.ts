@@ -49,6 +49,7 @@ export type SessionUser = {
   kcalGoal: number | null;
   stepsGoal: number;
   professionalId: string | null;
+  choseSoloAt: string | null;
   crm: string | null;
   specialty: string | null;
   createdAt: string;
@@ -74,7 +75,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const { data: profile } = await supabase
     .from('profiles')
     .select(
-      'id, email, full_name, role, avatar_url, plan, goal, height_cm, water_goal_ml, kcal_goal, steps_goal, professional_id, crm, specialty, created_at',
+      'id, email, full_name, role, avatar_url, plan, goal, height_cm, water_goal_ml, kcal_goal, steps_goal, professional_id, chose_solo_at, crm, specialty, created_at',
     )
     .eq('id', user.id)
     .single();
@@ -94,6 +95,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     kcalGoal: profile.kcal_goal,
     stepsGoal: profile.steps_goal,
     professionalId: profile.professional_id,
+    choseSoloAt: profile.chose_solo_at,
     crm: profile.crm,
     specialty: profile.specialty,
     createdAt: profile.created_at,

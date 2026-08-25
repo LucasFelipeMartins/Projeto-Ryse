@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Dumbbell,
   FileHeart,
+  Stethoscope,
   FileText,
   Home,
   LayoutGrid,
@@ -61,7 +62,10 @@ export const patientNav: NavGroup[] = [
   },
   {
     group: 'Conta',
-    items: [{ href: '/perfil', label: 'Perfil e plano', icon: User }],
+    items: [
+      { href: '/perfil', label: 'Perfil e plano', icon: User },
+      { href: '/profissionais', label: 'Meu profissional', icon: Stethoscope },
+    ],
   },
 ];
 

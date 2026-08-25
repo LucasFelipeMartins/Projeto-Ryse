@@ -28,7 +28,7 @@ import {
   humanSize,
   MAX_FILE_BYTES,
   MAX_PDF_PAGES,
-  MAX_UPLOADS_PER_DAY,
+  MAX_UPLOADS_PER_WEEK,
   validateBeforeUpload,
 } from '@/lib/validation/document';
 import { cn } from '@/lib/utils';
@@ -59,10 +59,10 @@ const MARKER_TONE = {
 
 export function DocumentosView({
   documents,
-  usedToday,
+  usedThisWeek,
 }: {
   documents: DocumentView[];
-  usedToday: number;
+  usedThisWeek: number;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -73,7 +73,7 @@ export function DocumentosView({
   const [detail, setDetail] = useState<DocumentView | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const remaining = Math.max(0, MAX_UPLOADS_PER_DAY - usedToday);
+  const remaining = Math.max(0, MAX_UPLOADS_PER_WEEK - usedThisWeek);
 
   const pick = (picked: File | null) => {
     setError(null);
@@ -243,8 +243,8 @@ export function DocumentosView({
 
         <p className="mt-2 text-center text-2xs text-subtle">
           {remaining > 0
-            ? `${remaining} de ${MAX_UPLOADS_PER_DAY} envios restantes hoje`
-            : 'Limite diário atingido. Tente novamente amanhã.'}
+            ? `${remaining} de ${MAX_UPLOADS_PER_WEEK} envios restantes nesta semana`
+            : 'Limite semanal atingido. Renova na segunda-feira.'}
         </p>
       </Card>
 
