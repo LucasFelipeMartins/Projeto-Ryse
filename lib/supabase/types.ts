@@ -53,6 +53,19 @@ export type ReviewStatus = 'pendente' | 'aprovado' | 'editado' | 'rejeitado';
 export type MarkerStatus = 'ok' | 'atencao' | 'alterado';
 export type SenderKind = 'paciente' | 'profissional' | 'ia';
 export type PaymentStatus = 'pago' | 'pendente' | 'falhou' | 'estornado';
+export type DocumentStatus =
+  | 'validando'
+  | 'rejeitado'
+  | 'aguardando_analise'
+  | 'analisado'
+  | 'erro';
+export type DocumentKind =
+  | 'exame_laboratorial'
+  | 'laudo_imagem'
+  | 'receita'
+  | 'atestado'
+  | 'outro_saude'
+  | 'nao_relacionado';
 
 export type Json =
   | string
@@ -311,6 +324,29 @@ export type TransactionRow = {
   occurred_at: string;
 };
 
+export type HealthDocumentRow = {
+  id: string;
+  patient_id: string;
+  storage_path: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  page_count: number | null;
+  status: DocumentStatus;
+  kind: DocumentKind | null;
+  reject_reason: string | null;
+  provider: string | null;
+  summary: string | null;
+  collected_on: string | null;
+  lab: string | null;
+  markers: Json;
+  highlights: string[];
+  content_score: number | null;
+  consent_at: string | null;
+  analyzed_at: string | null;
+  created_at: string;
+};
+
 export type NotificationPrefRow = {
   profile_id: string;
   protocol_changes: boolean;
@@ -383,6 +419,10 @@ export type Database = {
       subscriptions: Table<SubscriptionRow, 'patient_id' | 'tier' | 'amount_cents'>;
       transactions: Table<TransactionRow, 'patient_id' | 'amount_cents'>;
       notification_prefs: Table<NotificationPrefRow, 'profile_id'>;
+      health_documents: Table<
+        HealthDocumentRow,
+        'patient_id' | 'storage_path' | 'original_name' | 'mime_type' | 'size_bytes'
+      >;
     };
     Views: Record<never, never>;
     Functions: {
@@ -398,6 +438,10 @@ export type Database = {
         Args: { target_patient: string };
         Returns: string;
       };
+      documents_today: {
+        Args: { target_patient: string };
+        Returns: number;
+      };
     };
     Enums: {
       user_role: UserRole;
@@ -410,6 +454,8 @@ export type Database = {
       marker_status: MarkerStatus;
       sender_kind: SenderKind;
       payment_status: PaymentStatus;
+      document_status: DocumentStatus;
+      document_kind: DocumentKind;
     };
     CompositeTypes: Record<never, never>;
   };

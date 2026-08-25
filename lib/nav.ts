@@ -3,6 +3,7 @@ import {
   BrainCircuit,
   ClipboardCheck,
   Dumbbell,
+  FileHeart,
   FileText,
   Home,
   LayoutGrid,
@@ -53,6 +54,7 @@ export const patientNav: NavGroup[] = [
     group: 'Acompanhamento',
     items: [
       { href: '/progresso', label: 'Progresso e exames', icon: TrendingUp },
+      { href: '/documentos', label: 'Meus documentos', icon: FileHeart },
       { href: '/checkin', label: 'Check-in semanal', icon: ClipboardCheck },
       { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
     ],
