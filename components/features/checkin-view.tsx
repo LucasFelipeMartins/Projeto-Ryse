@@ -6,8 +6,16 @@ import { AlertCircle, Check, ChevronLeft, ChevronRight, Loader2, Send, Sparkles 
 import { Badge, Button, Card, PageIntro, Progress } from '@/components/ui';
 import { Field, Input, Sheet, Textarea } from '@/components/ui/interactive';
 import { submitCheckin } from '@/lib/actions/patient';
+import type { CheckinStatus } from '@/lib/queries/patient';
 import type { CheckinRow } from '@/lib/supabase/types';
 import { cn } from '@/lib/utils';
+
+/** "2026-08-31" -> "31 de agosto" */
+const diaEMes = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+  });
 
 type Answers = {
   peso: string;
@@ -69,12 +77,22 @@ function Scale({
   );
 }
 
+/**
+ * Check-in semanal.
+ *
+ * A obrigatoriedade é semanal, e o banco garante isso: `checkins` tem chave
+ * única em (paciente, semana), então enviar de novo **atualiza** a linha da
+ * semana em vez de criar uma segunda. Não existe caminho para dois check-ins
+ * obrigatórios na mesma semana.
+ */
 export function CheckinView({
   last,
   alreadySent,
+  status,
 }: {
   last: CheckinRow | null;
   alreadySent: boolean;
+  status: CheckinStatus;
 }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -130,15 +148,41 @@ export function CheckinView({
         eyebrow={`Etapa ${step + 1} de ${STEPS.length}`}
         title="Check-in semanal"
         description="Leva menos de dois minutos e é o que alimenta os ajustes do seu protocolo."
-        action={alreadySent ? <Badge tone="success">Enviado</Badge> : undefined}
+        action={
+          alreadySent ? (
+            <Badge tone="success" icon={Check}>
+              Enviado
+            </Badge>
+          ) : (
+            <Badge tone="warn">Pendente</Badge>
+          )
+        }
       />
 
       {alreadySent && !sent && (
         <Card className="flex items-start gap-2.5 border-brand-line bg-brand-soft">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand-text" aria-hidden />
+          <div className="min-w-0 text-sm text-muted">
+            <p>
+              Você já enviou o check-in da semana de{' '}
+              <strong className="text-fg">{diaEMes(status.weekStart)}</strong>. Enviar
+              de novo substitui as respostas — não cria um segundo registro.
+            </p>
+            <p className="mt-1">
+              O próximo abre em{' '}
+              <strong className="text-fg">{diaEMes(status.nextOpensOn)}</strong>.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {!alreadySent && !sent && (
+        <Card className="flex items-start gap-2.5 border-warn/30 bg-warn-soft">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden />
           <p className="text-sm text-muted">
-            Você já enviou o check-in desta semana. Enviar de novo substitui as
-            respostas anteriores.
+            Este é o check-in da semana de{' '}
+            <strong className="text-fg">{diaEMes(status.weekStart)}</strong>. É o
+            registro que mantém peso, dieta e treino calibrados.
           </p>
         </Card>
       )}

@@ -67,23 +67,86 @@ async function siteUrl() {
 
 /* ---------------------------------------------------------------- ENTRAR --- */
 
-export async function signIn(_prev: AuthState, formData: FormData): Promise<AuthState> {
+/**
+ * Login com portal separado.
+ *
+ * Cliente e profissional entram por portas diferentes, e cada porta só aceita
+ * o seu papel. Não é cosmético: o portal do profissional expõe a lista de
+ * pacientes e a fila clínica, então deixar um cliente autenticar ali — mesmo
+ * que a interface depois o redirecionasse — significaria criar uma sessão
+ * válida no contexto errado.
+ *
+ * Quando o papel não bate, a sessão recém-criada é encerrada na hora. O
+ * usuário recebe o endereço certo em vez de uma negativa seca.
+ */
+async function authenticate(
+  formData: FormData,
+  portal: 'paciente' | 'profissional',
+): Promise<AuthState> {
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const password = String(formData.get('password') ?? '');
-  const next = String(formData.get('proximo') ?? '') || '/';
+  const next = String(formData.get('proximo') ?? '');
 
   const emailError = checkEmail(email);
   if (emailError) return { error: emailError, values: { email } };
   if (!password) return { error: 'Informe sua senha.', values: { email } };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) return { error: translate(error.message), values: { email } };
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, onboarded_at')
+    .eq('id', data.user.id)
+    .single();
+
+  if (!profile) {
+    await supabase.auth.signOut();
+    return {
+      error: 'Sua conta existe, mas o perfil não foi encontrado. Fale com o suporte.',
+      values: { email },
+    };
+  }
+
+  if (profile.role !== portal) {
+    await supabase.auth.signOut();
+    return {
+      error:
+        portal === 'profissional'
+          ? 'Esta é a entrada de profissionais. Sua conta é de cliente — use a página de login do app.'
+          : 'Esta conta é de profissional. Entre pela área profissional.',
+      values: { email },
+    };
+  }
+
   revalidatePath('/', 'layout');
+
   // Só aceita caminho interno — evita open redirect via ?proximo=
-  redirect(next.startsWith('/') && !next.startsWith('//') ? next : '/');
+  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : null;
+
+  if (profile.role === 'profissional') {
+    redirect(safeNext && safeNext.startsWith('/pro') ? safeNext : '/pro');
+  }
+
+  // Cliente sem onboarding vai para o formulário, não para o dashboard.
+  if (!profile.onboarded_at) redirect('/onboarding');
+
+  redirect(safeNext && !safeNext.startsWith('/pro') ? safeNext : '/inicio');
+}
+
+/** Entrada do cliente. */
+export async function signIn(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  return authenticate(formData, 'paciente');
+}
+
+/** Entrada do profissional. */
+export async function signInProfessional(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  return authenticate(formData, 'profissional');
 }
 
 /* -------------------------------------------------------------- CADASTRO --- */
@@ -128,7 +191,8 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   }
 
   revalidatePath('/', 'layout');
-  redirect('/inicio');
+  // Conta nova nunca tem onboarding: o formulário é o primeiro destino.
+  redirect('/onboarding');
 }
 
 /* ------------------------------------------------- RECUPERAÇÃO DE SENHA --- */
@@ -138,13 +202,19 @@ export async function requestPasswordReset(
   formData: FormData,
 ): Promise<AuthState> {
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  // O portal de origem viaja no link para que o profissional volte à área
+  // dele depois de trocar a senha, em vez de cair no app do cliente.
+  const portal =
+    String(formData.get('portal') ?? '') === 'profissional' ? 'profissional' : 'paciente';
 
   const emailError = checkEmail(email);
   if (emailError) return { error: emailError, values: { email } };
 
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${await siteUrl()}/auth/callback?proximo=/nova-senha`,
+    redirectTo: `${await siteUrl()}/auth/callback?proximo=${encodeURIComponent(
+      `/nova-senha?portal=${portal}`,
+    )}`,
   });
 
   // Rate limit é o único erro que vale mostrar. Qualquer outro viraria um
@@ -193,9 +263,30 @@ export async function updatePassword(
 
 /* ------------------------------------------------------------------ SAIR --- */
 
+/**
+ * Encerra a sessão e devolve o usuário ao portal em que ele entrou.
+ * Mandar um profissional para /entrar o obrigaria a procurar a porta certa.
+ */
 export async function signOut() {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let destino = '/entrar';
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profile?.role === 'profissional') destino = '/pro/entrar';
+  }
+
   await supabase.auth.signOut();
   revalidatePath('/', 'layout');
-  redirect('/entrar');
+  redirect(destino);
 }

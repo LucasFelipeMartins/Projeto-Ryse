@@ -65,3 +65,63 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+/* ------------------------------------------------------------ PUSH ------- */
+
+/**
+ * Notificação recebida em segundo plano.
+ *
+ * O payload é sempre JSON vindo do servidor, mas um provedor pode entregar um
+ * push vazio (para "acordar" o worker). Por isso o parse é defensivo: sem
+ * conteúdo, mostramos um aviso genérico em vez de deixar o evento estourar —
+ * um push que falha aqui aparece como "site atualizado em segundo plano" no
+ * Android, o que é pior que uma mensagem simples.
+ */
+self.addEventListener('push', (event) => {
+  let payload = {};
+
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : '' };
+  }
+
+  const title = payload.title || 'Ryse';
+  const options = {
+    body: payload.body || 'Você tem uma novidade no Ryse.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    // A tag agrupa: dois lembretes de hidratação viram um só na bandeja.
+    tag: payload.tag || 'ryse',
+    renotify: Boolean(payload.tag),
+    data: { url: payload.url || '/' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+/**
+ * Toque na notificação.
+ *
+ * Se o app já estiver aberto, foca a aba existente e navega nela — abrir uma
+ * segunda janela do mesmo app é sempre indesejado.
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const destino = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        for (const client of clientList) {
+          if ('focus' in client) {
+            client.navigate(destino);
+            return client.focus();
+          }
+        }
+        return self.clients.openWindow(destino);
+      }),
+  );
+});

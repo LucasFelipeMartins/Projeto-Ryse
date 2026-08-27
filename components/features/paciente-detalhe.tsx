@@ -44,7 +44,7 @@ export function PacienteDetalhe({ patient }: { patient: PatientDetail }) {
       {/* ------------------------------------------------ cabeçalho */}
       <Card>
         <div className="flex items-start gap-3">
-          <Avatar name={patient.name} size="lg" />
+          <Avatar name={patient.name} src={patient.avatarUrl} size="lg" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-bold tracking-tight sm:text-xl">
               {patient.name}

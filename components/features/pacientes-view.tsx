@@ -147,7 +147,7 @@ export function PacientesView({ patients }: { patients: PatientRowView[] }) {
                 <Link key={p.id} href={`/pro/pacientes/${p.id}`} className="tap block">
                   <Card className="transition-colors hover:border-line-strong">
                     <div className="flex items-start gap-3">
-                      <Avatar name={p.name} size="md" />
+                      <Avatar name={p.name} src={p.avatarUrl} size="md" />
                       <div className="min-w-0 flex-1">
                         <h3 className="truncate text-sm font-bold">{p.name}</h3>
                         <p className="mt-0.5 truncate text-sm text-muted">
@@ -211,7 +211,7 @@ export function PacientesView({ patients }: { patients: PatientRowView[] }) {
                             href={`/pro/pacientes/${p.id}`}
                             className="flex items-center gap-3"
                           >
-                            <Avatar name={p.name} size="sm" />
+                            <Avatar name={p.name} src={p.avatarUrl} size="sm" />
                             <span className="min-w-0">
                               <span className="block truncate font-semibold group-hover:text-brand-text">
                                 {p.name}

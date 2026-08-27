@@ -97,6 +97,78 @@ export function Sheet({
   );
 }
 
+/* ------------------------------------------------------------- DRAWER --- */
+
+/**
+ * Gaveta lateral — o menu principal do mobile.
+ *
+ * Difere do `Sheet` de propósito: a folha inferior serve para uma ação
+ * pontual, a gaveta serve para navegar. Ela desliza da esquerda, ocupa no
+ * máximo 20rem (nunca a tela inteira, para o conteúdo continuar visível
+ * atrás) e fecha ao tocar no fundo, no ESC ou ao trocar de rota.
+ *
+ * O foco vai para dentro da gaveta ao abrir, e o scroll do fundo trava —
+ * sem isso, rolar o menu arrasta a página junto no iOS.
+ */
+export function Drawer({
+  open,
+  onClose,
+  label,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const painel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const prev = document.body.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
+    painel.current?.focus();
+
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+
+  if (!mounted || !open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] lg:hidden">
+      <div
+        className="absolute inset-0 animate-backdrop-in bg-black/55 backdrop-blur-[2px]"
+        onClick={onClose}
+        aria-hidden
+      />
+      <div
+        ref={painel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+        className={cn(
+          'relative flex h-full w-[86%] max-w-[20rem] flex-col bg-surface shadow-pop outline-none',
+          'animate-drawer-in border-r border-line',
+        )}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* ------------------------------------------------------- SEGMENTED CONTROL */
 
 export function Segmented<T extends string>({

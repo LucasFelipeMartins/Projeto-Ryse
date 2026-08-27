@@ -12,17 +12,35 @@ import {
   Loader2,
   Lock,
   Mail,
+  Stethoscope,
   User,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 import {
   requestPasswordReset,
   signIn,
+  signInProfessional,
   signUp,
   updatePassword,
   type AuthState,
 } from '@/lib/actions/auth';
 import { cn } from '@/lib/utils';
+
+/**
+ * Portal de acesso.
+ *
+ * Cliente e profissional têm telas próprias, e a diferença não é só o texto:
+ * cada uma envia para uma Server Action que **recusa** o papel errado. Os
+ * links auxiliares (cadastro, recuperação, troca de área) também mudam, para
+ * que ninguém saia de uma área e caia na outra sem perceber.
+ */
+export type Portal = 'paciente' | 'profissional';
+
+const PORTAL_LINKS = {
+  paciente: { login: '/entrar', reset: '/recuperar-senha' },
+  profissional: { login: '/pro/entrar', reset: '/pro/recuperar-senha' },
+} as const;
 
 /* ------------------------------------------------------------- PRIMITIVAS */
 
@@ -167,16 +185,36 @@ const LINK_ERRORS: Record<string, string> = {
 export function SignInForm({
   proximo = '',
   erro,
+  portal = 'paciente',
 }: {
   proximo?: string;
   erro?: string;
+  portal?: Portal;
 }) {
-  const [state, action] = useActionState<AuthState, FormData>(signIn, {});
+  const isPro = portal === 'profissional';
+  const [state, action] = useActionState<AuthState, FormData>(
+    isPro ? signInProfessional : signIn,
+    {},
+  );
   const linkError = erro ? LINK_ERRORS[erro] : undefined;
 
   return (
     <>
-      <Header title="Entrar" subtitle="Acesse seu plano de nutrição, treino e exames." />
+      {isPro && (
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-soft px-3 py-1.5 text-sm font-semibold text-brand-text">
+          <Stethoscope className="h-4 w-4" aria-hidden />
+          Área do profissional
+        </div>
+      )}
+
+      <Header
+        title={isPro ? 'Entrar como profissional' : 'Entrar'}
+        subtitle={
+          isPro
+            ? 'Acesse seu painel, seus pacientes e a fila de revisão clínica.'
+            : 'Acesse seu plano de nutrição, treino e exames.'
+        }
+      />
 
       {(state.error || linkError) && (
         <Alert kind="error">{state.error ?? linkError}</Alert>
@@ -207,7 +245,7 @@ export function SignInForm({
           />
           <div className="mt-2 flex justify-end">
             <Link
-              href="/recuperar-senha"
+              href={PORTAL_LINKS[portal].reset}
               className="text-sm font-semibold text-brand-text hover:underline"
             >
               Esqueci minha senha
@@ -218,12 +256,39 @@ export function SignInForm({
         <Submit>Entrar</Submit>
       </form>
 
-      <p className="mt-8 text-center text-sm text-muted">
-        Ainda não tem conta?{' '}
-        <Link href="/cadastrar" className="font-semibold text-brand-text hover:underline">
-          Criar conta
-        </Link>
-      </p>
+      {isPro ? (
+        <div className="mt-8 space-y-3 border-t border-line pt-6">
+          <p className="text-center text-sm text-muted">
+            Contas de profissional são criadas pela administração da clínica.
+          </p>
+          <Link
+            href="/entrar"
+            className="tap flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface text-sm font-semibold text-muted transition-colors hover:text-fg"
+          >
+            <UserRound className="h-4 w-4" aria-hidden />
+            Sou cliente — entrar no app
+          </Link>
+        </div>
+      ) : (
+        <>
+          <p className="mt-8 text-center text-sm text-muted">
+            Ainda não tem conta?{' '}
+            <Link href="/cadastrar" className="font-semibold text-brand-text hover:underline">
+              Criar conta
+            </Link>
+          </p>
+
+          <div className="mt-6 border-t border-line pt-6">
+            <Link
+              href="/pro/entrar"
+              className="tap flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface text-sm font-semibold text-muted transition-colors hover:text-fg"
+            >
+              <Stethoscope className="h-4 w-4" aria-hidden />
+              Sou profissional
+            </Link>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -321,14 +386,18 @@ export function SignUpForm() {
 
 /* ----------------------------------------------------- RECUPERAR A SENHA */
 
-export function ResetRequestForm() {
+export function ResetRequestForm({ portal = 'paciente' }: { portal?: Portal }) {
   const [state, action] = useActionState<AuthState, FormData>(requestPasswordReset, {});
 
   return (
     <>
       <Header
         title="Recuperar senha"
-        subtitle="Enviaremos um link para você definir uma nova senha."
+        subtitle={
+          portal === 'profissional'
+            ? 'Enviaremos um link para você redefinir a senha do painel.'
+            : 'Enviaremos um link para você definir uma nova senha.'
+        }
       />
 
       {state.error && <Alert kind="error">{state.error}</Alert>}
@@ -336,6 +405,7 @@ export function ResetRequestForm() {
 
       {!state.notice && (
         <form action={action} className="space-y-4">
+          <input type="hidden" name="portal" value={portal} />
           <TextField
             label="E-mail da conta"
             name="email"
@@ -352,7 +422,10 @@ export function ResetRequestForm() {
 
       <p className="mt-8 text-center text-sm text-muted">
         Lembrou a senha?{' '}
-        <Link href="/entrar" className="font-semibold text-brand-text hover:underline">
+        <Link
+          href={PORTAL_LINKS[portal].login}
+          className="font-semibold text-brand-text hover:underline"
+        >
           Voltar para o login
         </Link>
       </p>
@@ -362,7 +435,7 @@ export function ResetRequestForm() {
 
 /* ------------------------------------------------------------ NOVA SENHA */
 
-export function NewPasswordForm() {
+export function NewPasswordForm({ portal = 'paciente' }: { portal?: Portal }) {
   const [state, action] = useActionState<AuthState, FormData>(updatePassword, {});
 
   return (
@@ -396,7 +469,10 @@ export function NewPasswordForm() {
       </form>
 
       <p className="mt-8 text-center text-sm text-muted">
-        <Link href="/entrar" className="font-semibold text-brand-text hover:underline">
+        <Link
+          href={PORTAL_LINKS[portal].login}
+          className="font-semibold text-brand-text hover:underline"
+        >
           Voltar para o login
         </Link>
       </p>

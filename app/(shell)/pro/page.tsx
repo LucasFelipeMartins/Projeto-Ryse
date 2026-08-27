@@ -20,7 +20,7 @@ import {
 import { BarChart, LineChart } from '@/components/charts';
 import { requireProfessional } from '@/lib/supabase/server';
 import { getActivity, getDashboard, getReviewQueue } from '@/lib/queries/pro';
-import { centsToBRL, cn, greeting } from '@/lib/utils';
+import { cn, greeting } from '@/lib/utils';
 
 export const metadata = { title: 'Painel' };
 
@@ -81,7 +81,17 @@ export default async function ProDashboardPage() {
           value={kpis.avgAdherence > 0 ? `${kpis.avgAdherence}%` : '—'}
           hint="protocolos ativos"
         />
-        <Stat label="MRR" value={centsToBRL(kpis.mrrCents)} hint="assinaturas ativas" />
+        {/*
+          O quarto indicador era o MRR. Faturamento saiu da tela do
+          profissional; no lugar entra o que ele de fato acompanha no dia a
+          dia — quantos pacientes ainda devem o check-in da semana.
+        */}
+        <Stat
+          label="Check-ins pendentes"
+          value={String(kpis.pendingCheckins)}
+          delta={kpis.pendingCheckins > 0 ? 'Aguardando resposta' : 'Todos em dia'}
+          up={kpis.pendingCheckins === 0}
+        />
       </div>
 
       {/*

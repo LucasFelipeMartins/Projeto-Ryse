@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { SignInForm } from '@/components/features/auth-forms';
-import { getSessionUser } from '@/lib/supabase/server';
+import { getSessionUser, homeFor } from '@/lib/supabase/server';
 
 export const metadata = { title: 'Entrar' };
 
@@ -13,7 +13,7 @@ export default async function EntrarPage({
   // mesma definição do resto do app: sessão E perfil. Quando as duas noções
   // divergiam, uma mandava para /entrar e a outra devolvia para /, em laço.
   const user = await getSessionUser();
-  if (user) redirect('/');
+  if (user) redirect(homeFor(user.role));
 
   // Ler no servidor (em vez de useSearchParams) mantém o formulário
   // renderizado no servidor — sem tela em branco esperando o JS.

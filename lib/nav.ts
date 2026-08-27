@@ -1,20 +1,20 @@
 import {
   Apple,
+  Bell,
   BrainCircuit,
   ClipboardCheck,
   Dumbbell,
   FileHeart,
-  Stethoscope,
   FileText,
   Home,
   LayoutGrid,
   type LucideIcon,
   MessageSquare,
   Settings,
+  Stethoscope,
   TrendingUp,
   User,
   Users,
-  Wallet,
 } from 'lucide-react';
 
 export type Role = 'paciente' | 'pro';
@@ -39,7 +39,6 @@ export const patientTabs: NavItem[] = [
   { href: '/nutricao', label: 'Nutrição', short: 'Dieta', icon: Apple },
   { href: '/treino', label: 'Treino', icon: Dumbbell },
   { href: '/progresso', label: 'Progresso', short: 'Evolução', icon: TrendingUp },
-  { href: '/perfil', label: 'Perfil', icon: User },
 ];
 
 export const patientNav: NavGroup[] = [
@@ -65,6 +64,7 @@ export const patientNav: NavGroup[] = [
     items: [
       { href: '/perfil', label: 'Perfil e plano', icon: User },
       { href: '/profissionais', label: 'Meu profissional', icon: Stethoscope },
+      { href: '/notificacoes', label: 'Notificações', icon: Bell },
     ],
   },
 ];
@@ -78,6 +78,14 @@ export const proTabs: NavItem[] = [
   { href: '/pro/mensagens', label: 'Mensagens', short: 'Chat', icon: MessageSquare },
 ];
 
+/*
+  Faturamento saiu da navegação do profissional.
+
+  As consultas e as tabelas continuam de pé — assinatura e transação seguem
+  sendo dado do negócio —, o que foi removido é a exposição na interface:
+  menu, atalho e página. Ver `lib/queries/pro.ts`, que ainda calcula MRR para
+  uso interno.
+*/
 export const proNav: NavGroup[] = [
   {
     group: 'Visão geral',
@@ -97,7 +105,6 @@ export const proNav: NavGroup[] = [
     group: 'Gestão',
     items: [
       { href: '/pro/mensagens', label: 'Mensagens', icon: MessageSquare },
-      { href: '/pro/financeiro', label: 'Faturamento', icon: Wallet },
       { href: '/pro/config', label: 'Configurações', icon: Settings },
     ],
   },
@@ -106,9 +113,14 @@ export const proNav: NavGroup[] = [
 /** Itens que ficam atrás do botão "Mais" na tab bar do profissional. */
 export const proMoreItems: NavItem[] = [
   { href: '/pro/protocolos', label: 'Protocolos base', icon: FileText },
-  { href: '/pro/financeiro', label: 'Faturamento', icon: Wallet },
   { href: '/pro/config', label: 'Configurações', icon: Settings },
 ];
+
+/**
+ * Destino do botão de configurações, por papel.
+ * O paciente edita tudo no perfil; o profissional tem tela própria.
+ */
+export const settingsHrefFor = (isPro: boolean) => (isPro ? '/pro/config' : '/perfil');
 
 export function isActive(pathname: string, item: NavItem) {
   return item.exact ? pathname === item.href : pathname.startsWith(item.href);

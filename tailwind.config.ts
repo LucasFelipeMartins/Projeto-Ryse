@@ -114,6 +114,10 @@ const config: Config = {
           to: { opacity: '1', transform: 'scale(1)' },
         },
         'backdrop-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'drawer-in': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(0)' },
+        },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
         'pulse-ring': {
           '0%': { transform: 'scale(.85)', opacity: '.7' },
@@ -126,6 +130,7 @@ const config: Config = {
         'sheet-up': 'sheet-up .28s cubic-bezier(.16,1,.3,1) both',
         'scale-in': 'scale-in .18s cubic-bezier(.16,1,.3,1) both',
         'backdrop-in': 'backdrop-in .2s ease-out both',
+        'drawer-in': 'drawer-in .28s cubic-bezier(.16,1,.3,1) both',
         'pulse-ring': 'pulse-ring 2s cubic-bezier(.24,.6,.35,1) infinite',
       },
       transitionTimingFunction: {

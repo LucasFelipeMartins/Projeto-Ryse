@@ -1,10 +1,23 @@
 'use client';
 
 import { useOptimistic, useRef, useState, useTransition } from 'react';
-import { Check, Droplet, Loader2, Plus, Settings2, Undo2 } from 'lucide-react';
-import { Button, Card, Progress } from '@/components/ui';
+import {
+  Calculator,
+  Check,
+  Droplet,
+  Loader2,
+  Plus,
+  Settings2,
+  Undo2,
+} from 'lucide-react';
+import { Badge, Button, Card, Progress } from '@/components/ui';
 import { Sheet } from '@/components/ui/interactive';
-import { logHydration, removeHydration, updateWaterGoal } from '@/lib/actions/patient';
+import {
+  logHydration,
+  removeHydration,
+  resetWaterGoal,
+  updateWaterGoal,
+} from '@/lib/actions/patient';
 import { MAX_INTAKE_ML } from '@/lib/types';
 import type { HydrationView } from '@/lib/queries/patient';
 import { litros } from '@/lib/utils';
@@ -14,6 +27,11 @@ import { litros } from '@/lib/utils';
  *
  * O paciente digita o volume exato que bebeu — não há botão de incremento
  * fixo, porque copo, garrafa e squeeze têm capacidades diferentes.
+ *
+ * A meta não é um número guardado: vem de `computeWaterGoal`, calculada a
+ * cada leitura a partir do peso mais recente. Por isso o card também explica
+ * de onde o valor saiu — meta sem explicação vira número mágico, e ninguém
+ * persegue um número mágico.
  */
 export function HydrationCard({ data }: { data: HydrationView }) {
   const [pending, startTransition] = useTransition();
@@ -30,6 +48,7 @@ export function HydrationCard({ data }: { data: HydrationView }) {
 
   const pct = data.goalMl > 0 ? Math.min(100, (optimisticTotal / data.goalMl) * 100) : 0;
   const remaining = Math.max(0, data.goalMl - optimisticTotal);
+  const atingiu = remaining === 0;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +91,12 @@ export function HydrationCard({ data }: { data: HydrationView }) {
           <Droplet className="h-[18px] w-[18px]" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold">Hidratação</h3>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className="text-sm font-semibold">Hidratação</h3>
+            <Badge tone={atingiu ? 'success' : 'neutral'}>
+              {Math.round(pct)}% da meta
+            </Badge>
+          </div>
           <p className="text-sm text-muted">
             <span className="font-bold tabular-nums text-fg">
               {optimisticTotal.toLocaleString('pt-BR')} ml
@@ -107,6 +131,12 @@ export function HydrationCard({ data }: { data: HydrationView }) {
         ) : (
           <span className="font-semibold text-success">Meta do dia batida.</span>
         )}
+      </p>
+
+      {/* De onde saiu a meta. Sem isso o número parece arbitrário. */}
+      <p className="mt-1 flex items-center gap-1.5 text-sm text-subtle">
+        <Calculator className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {data.explanation}
       </p>
 
       {/* ------------------------------------------------ registro em ml */}
@@ -191,6 +221,9 @@ export function HydrationCard({ data }: { data: HydrationView }) {
         open={goalOpen}
         onClose={() => setGoalOpen(false)}
         currentGoal={data.goalMl}
+        manual={data.manualGoal}
+        explanation={data.explanation}
+        hasWeight={data.basisWeightKg !== null}
       />
     </Card>
   );
@@ -202,10 +235,16 @@ function GoalSheet({
   open,
   onClose,
   currentGoal,
+  manual,
+  explanation,
+  hasWeight,
 }: {
   open: boolean;
   onClose: () => void;
   currentGoal: number;
+  manual: boolean;
+  explanation: string;
+  hasWeight: boolean;
 }) {
   const [goal, setGoal] = useState(String(currentGoal));
   const [error, setError] = useState<string | null>(null);
@@ -227,12 +266,29 @@ function GoalSheet({
     });
   };
 
+  /* Volta ao automático: a meta passa a acompanhar o peso outra vez. */
+  const restore = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await resetWaterGoal();
+      if (!result.ok) {
+        setError(result.error ?? 'Não foi possível restaurar.');
+        return;
+      }
+      onClose();
+    });
+  };
+
   return (
     <Sheet
       open={open}
       onClose={onClose}
       title="Meta diária de água"
-      description="Seu médico pode ajustar esse valor conforme peso e treino."
+      description={
+        manual
+          ? 'Você está com uma meta fixa. Ela não muda quando seu peso muda.'
+          : 'Calculada automaticamente a partir do seu peso, altura, idade e treino.'
+      }
       footer={
         <Button block onClick={save} disabled={pending} icon={pending ? undefined : Check}>
           {pending ? 'Salvando…' : 'Salvar meta'}
@@ -267,9 +323,29 @@ function GoalSheet({
             {error}
           </p>
         )}
-        <p className="mt-2 text-sm text-muted">
-          Referência comum: 35 ml por quilo de peso corporal.
+
+        <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
+          <Calculator className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          {explanation}
         </p>
+
+        {!hasWeight && (
+          <p className="mt-3 rounded-xl border border-warn/25 bg-warn-soft p-3 text-sm text-warn">
+            Registre seu peso no check-in para calcularmos a meta certa para você.
+          </p>
+        )}
+
+        {manual && (
+          <button
+            type="button"
+            onClick={restore}
+            disabled={pending}
+            className="tap mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface py-2.5 text-sm font-semibold text-muted transition-colors hover:text-fg disabled:opacity-60"
+          >
+            <Calculator className="h-4 w-4" aria-hidden />
+            Voltar ao cálculo automático
+          </button>
+        )}
       </div>
     </Sheet>
   );

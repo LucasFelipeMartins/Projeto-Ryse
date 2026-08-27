@@ -25,16 +25,29 @@ import {
 } from '@/components/ui';
 import { Ring } from '@/components/charts';
 import { HydrationCard } from '@/components/features/hydration';
+import { LiveRefresh } from '@/components/features/live-refresh';
 import { requirePatient } from '@/lib/supabase/server';
 import {
+  getCheckinStatus,
   getHydration,
   getLatestDecision,
   getNutrition,
   getStreak,
   getTraining,
-  hasCheckinThisWeek,
 } from '@/lib/queries/patient';
 import { greeting } from '@/lib/utils';
+
+/**
+ * As tabelas que fazem esta tela mudar. Um registro de água feito no celular
+ * atualiza a aba aberta no computador sem ninguém apertar F5.
+ */
+const TABELAS_AO_VIVO = [
+  'hydration_logs',
+  'meal_logs',
+  'workout_sessions',
+  'body_metrics',
+  'checkins',
+];
 
 export const metadata = { title: 'Início' };
 
@@ -48,13 +61,22 @@ export default async function InicioPage() {
   const user = await requirePatient();
 
   // Consultas independentes disparam juntas.
-  const [hydration, nutrition, training, decision, streak, checkedIn] = await Promise.all([
-    getHydration(user.id, user.waterGoalMl),
+  const [hydration, nutrition, training, decision, streak, checkin] = await Promise.all([
+    // A meta de água sai do cálculo, não de um número guardado: o peso mais
+    // recente entra na conta a cada leitura.
+    getHydration(user.id, {
+      heightCm: user.heightCm,
+      birthDate: user.birthDate,
+      activityLevel: user.activityLevel,
+      trainingDays: user.trainingDays,
+      overrideMl: user.waterGoalOverrideMl,
+      timezone: user.timezone,
+    }),
     getNutrition(user.id),
     getTraining(user.id),
     getLatestDecision(user.id),
     getStreak(user.id),
-    hasCheckinThisWeek(user.id),
+    getCheckinStatus(user.id, user.timezone),
   ]);
 
   const firstName = user.fullName.split(' ')[0];
@@ -69,6 +91,8 @@ export default async function InicioPage() {
 
   return (
     <div className="space-y-6">
+      <LiveRefresh patientId={user.id} tables={TABELAS_AO_VIVO} channel="inicio" />
+
       <PageIntro
         eyebrow={today.charAt(0).toUpperCase() + today.slice(1)}
         title={`${greeting()}, ${firstName}`}
@@ -85,6 +109,34 @@ export default async function InicioPage() {
           ) : undefined
         }
       />
+
+      {/*
+        Check-in da semana em aberto.
+
+        Fica no topo porque é a única pendência que o app cobra do usuário —
+        e porque tudo o mais (evolução, contexto da IA, peso da hidratação)
+        depende dele estar em dia.
+      */}
+      {checkin.pending && (
+        <Link href="/checkin" className="tap block">
+          <Card className="flex items-start gap-3 border-warn/30 bg-warn-soft transition-colors hover:border-warn">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warn text-white">
+              <ClipboardCheck className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-bold">Seu check-in está pendente</h2>
+              <p className="mt-1 text-sm text-muted">
+                Leva dois minutos e é o que mantém peso, dieta e treino calibrados
+                para a semana.
+              </p>
+              <span className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-warn">
+                Fazer agora
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </span>
+            </div>
+          </Card>
+        </Link>
+      )}
 
       {/* Ainda não decidiu: escolher profissional é o próximo passo. */}
       {!user.professionalId && !user.choseSoloAt && (
@@ -307,7 +359,7 @@ export default async function InicioPage() {
             {
               href: '/checkin',
               label: 'Check-in',
-              hint: checkedIn ? 'Enviado' : 'Pendente',
+              hint: checkin.pending ? 'Pendente' : 'Enviado',
               icon: ClipboardCheck,
             },
             { href: '/mensagens', label: 'Mensagens', hint: 'Falar com a clínica', icon: MessageSquare },

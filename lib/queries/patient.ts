@@ -1,6 +1,7 @@
 import 'server-only';
 import { createClient } from '@/lib/supabase/server';
 import { shortTime, todayISO, weekStartISO } from '@/lib/utils';
+import { computeWaterGoal, explainWaterGoal } from '@/lib/hydration';
 import type { MarkerStatus, MealSlot } from '@/lib/supabase/types';
 
 /* ------------------------------------------------------------ VIEW MODELS */
@@ -56,6 +57,16 @@ export type WeekDayView = {
 export type HydrationView = {
   goalMl: number;
   totalMl: number;
+  /** Percentual da meta já atingido, entre 0 e 100. */
+  percent: number;
+  /** `true` quando a meta veio de prescrição, não do cálculo. */
+  manualGoal: boolean;
+  /** Frase que explica de onde saiu o número. */
+  explanation: string;
+  /** Peso que serviu de base — `null` quando ainda não há registro. */
+  basisWeightKg: number | null;
+  /** Dia a que este total pertence, no fuso do paciente. */
+  day: string;
   entries: { id: string; amountMl: number; at: string }[];
 };
 
@@ -71,14 +82,47 @@ const DAY_LABELS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
 /* ------------------------------------------------------------- HIDRATAÇÃO */
 
-export async function getHydration(patientId: string, goalMl: number): Promise<HydrationView> {
+/**
+ * Hidratação do dia, com a meta **calculada** — nunca um número fixo.
+ *
+ * A meta sai de `computeWaterGoal` a partir do peso mais recente. Como o
+ * cálculo acontece na leitura, registrar um peso novo no check-in muda a meta
+ * na próxima renderização, sem nenhuma rotina de sincronização no meio.
+ *
+ * O dia é resolvido no fuso do paciente: às 22h em São Paulo, UTC já virou, e
+ * o copo d'água cairia no dia seguinte. É também o que faz o progresso
+ * reiniciar na hora certa.
+ */
+export async function getHydration(
+  patientId: string,
+  profile: {
+    heightCm: number | null;
+    birthDate: string | null;
+    activityLevel: string | null;
+    trainingDays: number | null;
+    overrideMl: number | null;
+    timezone?: string;
+  },
+): Promise<HydrationView> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from('hydration_logs')
-    .select('id, amount_ml, logged_at')
-    .eq('patient_id', patientId)
-    .eq('logged_on', todayISO())
-    .order('logged_at', { ascending: false });
+  const day = todayISO(profile.timezone);
+
+  const [{ data }, { data: weightRow }] = await Promise.all([
+    supabase
+      .from('hydration_logs')
+      .select('id, amount_ml, logged_at')
+      .eq('patient_id', patientId)
+      .eq('logged_on', day)
+      .order('logged_at', { ascending: false }),
+    supabase
+      .from('body_metrics')
+      .select('weight_kg')
+      .eq('patient_id', patientId)
+      .not('weight_kg', 'is', null)
+      .order('measured_on', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
   const entries = (data ?? []).map((r) => ({
     id: r.id,
@@ -86,9 +130,27 @@ export async function getHydration(patientId: string, goalMl: number): Promise<H
     at: r.logged_at,
   }));
 
+  const weightKg = weightRow?.weight_kg ?? null;
+
+  const goal = computeWaterGoal({
+    weightKg,
+    heightCm: profile.heightCm,
+    birthDate: profile.birthDate,
+    activityLevel: profile.activityLevel,
+    trainingDays: profile.trainingDays,
+    overrideMl: profile.overrideMl,
+  });
+
+  const totalMl = entries.reduce((sum, e) => sum + e.amountMl, 0);
+
   return {
-    goalMl,
-    totalMl: entries.reduce((sum, e) => sum + e.amountMl, 0),
+    goalMl: goal.goalMl,
+    totalMl,
+    percent: goal.goalMl > 0 ? Math.min(100, (totalMl / goal.goalMl) * 100) : 0,
+    manualGoal: goal.manual,
+    explanation: explainWaterGoal(goal),
+    basisWeightKg: weightKg,
+    day,
     entries,
   };
 }
@@ -388,15 +450,65 @@ export async function getLastCheckin(patientId: string) {
   return data;
 }
 
-export async function hasCheckinThisWeek(patientId: string) {
+export async function hasCheckinThisWeek(patientId: string, timezone?: string) {
   const supabase = await createClient();
   const { count } = await supabase
     .from('checkins')
     .select('id', { count: 'exact', head: true })
     .eq('patient_id', patientId)
-    .eq('week_start', weekStartISO());
+    .eq('week_start', weekStartISO(timezone));
 
   return (count ?? 0) > 0;
+}
+
+/**
+ * Estado do check-in semanal.
+ *
+ * O check-in é obrigatório uma vez por semana. Em vez de espalhar essa regra
+ * pelas telas, ela vira um objeto: pendente ou não, quando foi o último e
+ * quando abre o próximo.
+ */
+export type CheckinStatus = {
+  pending: boolean;
+  weekStart: string;
+  /** Quando o último check-in foi enviado. */
+  lastAt: string | null;
+  /** Segunda-feira em que o próximo check-in abre. */
+  nextOpensOn: string;
+};
+
+export async function getCheckinStatus(
+  patientId: string,
+  timezone?: string,
+): Promise<CheckinStatus> {
+  const supabase = await createClient();
+  const weekStart = weekStartISO(timezone);
+
+  const [{ data: current }, { data: last }] = await Promise.all([
+    supabase
+      .from('checkins')
+      .select('id')
+      .eq('patient_id', patientId)
+      .eq('week_start', weekStart)
+      .maybeSingle(),
+    supabase
+      .from('checkins')
+      .select('created_at')
+      .eq('patient_id', patientId)
+      .order('week_start', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const next = new Date(`${weekStart}T12:00:00`);
+  next.setDate(next.getDate() + 7);
+
+  return {
+    pending: !current,
+    weekStart,
+    lastAt: last?.created_at ?? null,
+    nextOpensOn: next.toISOString().slice(0, 10),
+  };
 }
 
 /* ------------------------------------------------------- PARECER DA IA ---- */

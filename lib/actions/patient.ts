@@ -30,7 +30,9 @@ export async function logHydration(amountMl: number): Promise<ActionResult> {
   const { error } = await supabase.from('hydration_logs').insert({
     patient_id: user.id,
     amount_ml: ml,
-    logged_on: todayISO(),
+    // O dia vem do fuso do paciente: às 22h em São Paulo o UTC já virou, e o
+    // registro cairia no dia seguinte.
+    logged_on: todayISO(user.timezone),
   });
 
   if (error) return { ok: false, error: 'Não foi possível registrar agora.' };
@@ -56,7 +58,14 @@ export async function removeHydration(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Meta diária de água, em ml. */
+/**
+ * Define uma meta fixa de água, sobrepondo o cálculo automático.
+ *
+ * Grava em `water_goal_override_ml`, não em `water_goal_ml`: a meta padrão
+ * continua sendo derivada do peso a cada leitura, e o override é a exceção
+ * consciente. Guardar o número calculado criaria uma segunda fórmula, que
+ * ficaria desatualizada no primeiro check-in com peso novo.
+ */
 export async function updateWaterGoal(goalMl: number): Promise<ActionResult> {
   const user = await requirePatient();
 
@@ -68,12 +77,62 @@ export async function updateWaterGoal(goalMl: number): Promise<ActionResult> {
   const supabase = await createClient();
   const { error } = await supabase
     .from('profiles')
-    .update({ water_goal_ml: ml })
+    .update({ water_goal_override_ml: ml })
     .eq('id', user.id);
 
   if (error) return { ok: false, error: 'Não foi possível salvar a meta.' };
 
   revalidatePath('/inicio');
+  revalidatePath('/perfil');
+  return { ok: true };
+}
+
+/** Volta a meta para o valor calculado a partir do peso. */
+export async function resetWaterGoal(): Promise<ActionResult> {
+  const user = await requirePatient();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ water_goal_override_ml: null })
+    .eq('id', user.id);
+
+  if (error) return { ok: false, error: 'Não foi possível restaurar o cálculo.' };
+
+  revalidatePath('/inicio');
+  revalidatePath('/perfil');
+  return { ok: true };
+}
+
+/**
+ * Registra o peso atual fora do check-in.
+ *
+ * Existe porque a meta de hidratação e o contexto da IA dependem de um peso
+ * recente, e obrigar a esperar a segunda-feira do check-in para atualizá-lo
+ * deixaria o número velho por até seis dias.
+ */
+export async function registrarPeso(weightKg: number): Promise<ActionResult> {
+  const user = await requirePatient();
+
+  if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 400) {
+    return { ok: false, error: 'O peso deve ficar entre 20 e 400 kg.' };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from('body_metrics').upsert(
+    {
+      patient_id: user.id,
+      measured_on: todayISO(user.timezone),
+      weight_kg: Math.round(weightKg * 10) / 10,
+    },
+    { onConflict: 'patient_id,measured_on' },
+  );
+
+  if (error) return { ok: false, error: 'Não foi possível registrar o peso.' };
+
+  // A meta de água é derivada do peso: as duas telas mudam juntas.
+  revalidatePath('/inicio');
+  revalidatePath('/progresso');
   revalidatePath('/perfil');
   return { ok: true };
 }
@@ -205,7 +264,9 @@ export async function submitCheckin(input: CheckinInput): Promise<ActionResult> 
     return { ok: false, error: 'Peso fora da faixa esperada.' };
   }
 
-  const week = weekStartISO();
+  // A semana é a do paciente: um check-in feito no domingo à noite em São
+  // Paulo pertence àquela semana, não à seguinte do UTC.
+  const week = weekStartISO(user.timezone);
 
   const { error } = await supabase.from('checkins').upsert(
     {
@@ -224,12 +285,16 @@ export async function submitCheckin(input: CheckinInput): Promise<ActionResult> 
 
   if (error) return { ok: false, error: 'Não foi possível enviar o check-in.' };
 
-  // O peso do check-in também alimenta o gráfico de evolução.
+  /*
+    O peso do check-in alimenta o gráfico de evolução — e, por tabela, a meta
+    de hidratação, que é derivada do peso mais recente. Um número só, gravado
+    num lugar só.
+  */
   if (input.weightKg !== null) {
     await supabase.from('body_metrics').upsert(
       {
         patient_id: user.id,
-        measured_on: todayISO(),
+        measured_on: todayISO(user.timezone),
         weight_kg: input.weightKg,
       },
       { onConflict: 'patient_id,measured_on' },

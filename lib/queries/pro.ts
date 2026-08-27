@@ -46,6 +46,8 @@ const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 export type PatientRowView = {
   id: string;
   name: string;
+  /** Foto de perfil do paciente. `null` cai nas iniciais. */
+  avatarUrl: string | null;
   email: string;
   plan: string;
   goal: string;
@@ -99,7 +101,7 @@ export async function getPatients(professionalId: string): Promise<PatientRowVie
 
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, full_name, email, plan, goal')
+    .select('id, full_name, email, plan, goal, avatar_url')
     .eq('professional_id', professionalId)
     .eq('role', 'paciente')
     .order('full_name');
@@ -173,6 +175,7 @@ export async function getPatients(professionalId: string): Promise<PatientRowVie
     return {
       id: p.id,
       name: p.full_name,
+      avatarUrl: p.avatar_url,
       email: p.email,
       plan: p.plan ? PLAN_LABEL[p.plan] : 'Sem plano',
       goal: p.goal ?? '—',
@@ -212,6 +215,8 @@ export async function getDashboard(professionalId: string) {
       .select('adherence, week_start, patient_id')
       .gte('week_start', shiftWeeks(weekStartISO(), -7))
       .order('week_start'),
+    // Continua sendo lido para uso interno; a interface do profissional
+    // apenas não expõe mais o número.
     supabase.from('subscriptions').select('amount_cents').eq('is_active', true),
     supabase
       .from('ai_reviews')
@@ -248,6 +253,39 @@ export async function getDashboard(professionalId: string) {
   });
 
   const mrrCents = (subs ?? []).reduce((sum, s) => sum + s.amount_cents, 0);
+
+  /*
+    Check-ins pendentes da semana corrente.
+
+    Substituiu o MRR no painel: faturamento saiu da interface do
+    profissional, e o que ele precisa ver ali é quem ainda não respondeu —
+    é a informação sobre a qual ele consegue agir hoje.
+
+    Conta quem NÃO tem linha na semana atual, então parte da lista de
+    pacientes e subtrai os que já enviaram.
+  */
+  const semanaAtual = weekStartISO();
+  const { data: meusPacientes } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('professional_id', professionalId)
+    .eq('role', 'paciente');
+
+  const idsPacientes = (meusPacientes ?? []).map((p) => p.id);
+
+  let pendingCheckins = 0;
+
+  if (idsPacientes.length > 0) {
+    const { data: enviados } = await supabase
+      .from('checkins')
+      .select('patient_id')
+      .eq('week_start', semanaAtual)
+      .in('patient_id', idsPacientes);
+
+    const emDia = new Set((enviados ?? []).map((c) => c.patient_id));
+    pendingCheckins = idsPacientes.filter((id) => !emDia.has(id)).length;
+  }
+
   const allAdherence = adherenceSeries.filter((n) => n > 0);
   const avgAdherence =
     allAdherence.length > 0
@@ -259,6 +297,9 @@ export async function getDashboard(professionalId: string) {
       activePatients: activePatients ?? 0,
       pendingReviews: pendingCount ?? 0,
       avgAdherence,
+      pendingCheckins,
+      // Continua calculado para uso interno (relatórios, administração).
+      // A tela do profissional não o exibe mais.
       mrrCents,
     },
     weekLabels: weeks.map((_, i) => `S${i + 1}`),
@@ -542,7 +583,7 @@ export async function getPatientDetail(patientId: string, professionalId: string
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, full_name, email, plan, goal, height_cm, created_at')
+    .select('id, full_name, email, plan, goal, height_cm, created_at, avatar_url')
     .eq('id', patientId)
     .eq('professional_id', professionalId)
     .maybeSingle();
@@ -585,6 +626,7 @@ export async function getPatientDetail(patientId: string, professionalId: string
   return {
     id: profile.id,
     name: profile.full_name,
+    avatarUrl: profile.avatar_url,
     email: profile.email,
     plan: profile.plan ? PLAN_LABEL[profile.plan] : 'Sem plano',
     goal: profile.goal ?? '—',

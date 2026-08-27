@@ -3,17 +3,30 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  Activity,
   AlertCircle,
+  ArrowRight,
   BrainCircuit,
   Check,
   CheckCircle2,
+  FileHeart,
   Gauge,
   Loader2,
+  ShieldCheck,
+  Sparkles,
   Stethoscope,
   UserRoundX,
   Users,
 } from 'lucide-react';
-import { Avatar, Badge, Button, Card, EmptyState, PageIntro, SectionTitle } from '@/components/ui';
+import {
+  Avatar,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  PageIntro,
+  SectionTitle,
+} from '@/components/ui';
 import { Sheet } from '@/components/ui/interactive';
 import {
   chooseProfessional,
@@ -122,19 +135,15 @@ export function ProfissionaisView({
 
       {/* ------------------------------------------------ lista */}
       <section>
-        <SectionTitle
-          title="Profissionais disponíveis"
-          hint="Quanto menos pacientes, mais rápida tende a ser a resposta."
-        />
+        {professionals.length > 0 && (
+          <SectionTitle
+            title="Profissionais disponíveis"
+            hint="Quanto menos pacientes, mais rápida tende a ser a resposta."
+          />
+        )}
 
         {professionals.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={Users}
-              title="Nenhum profissional cadastrado"
-              description="Assim que a clínica cadastrar profissionais, eles aparecem aqui. Você pode seguir só com a IA por enquanto."
-            />
-          </Card>
+          <SemProfissionais />
         ) : (
           <div className="space-y-3">
             {professionals.map((p) => {
@@ -346,6 +355,95 @@ export function ProfissionaisView({
           Desfazer vínculo com o profissional atual
         </button>
       )}
+    </div>
+  );
+}
+
+/* --------------------------------------------- AUSÊNCIA DE PROFISSIONAIS -- */
+
+/**
+ * Estado vazio do diretório.
+ *
+ * Um cartão cinza de "nenhum resultado" faria a tela parecer quebrada — e,
+ * pior, deixaria o paciente achando que o acompanhamento parou. Aqui a
+ * ausência é tratada como **transição**, não como falha: a mensagem afirma
+ * que a IA assume o monitoramento, e os cartões abaixo mostram concretamente
+ * o que continua funcionando enquanto isso.
+ */
+function SemProfissionais() {
+  const garantias = [
+    {
+      icon: Activity,
+      title: 'Seus dados seguem sendo lidos',
+      text: 'Peso, medidas, treinos, refeições e check-ins continuam alimentando sua evolução.',
+    },
+    {
+      icon: FileHeart,
+      title: 'Exames continuam analisados',
+      text: 'Os documentos que você enviar passam pela leitura automática, com marcadores e resumo.',
+    },
+    {
+      icon: Sparkles,
+      title: 'Relatórios e planos por IA',
+      text: 'Dieta, ficha de treino e relatórios das áreas seguem disponíveis para você gerar.',
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Card className="relative overflow-hidden border-line-strong bg-ink p-6 text-ink-on sm:p-8">
+        <span
+          className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-brand/25 blur-3xl"
+          aria-hidden
+        />
+
+        <div className="relative">
+          <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand text-brand-on">
+            <BrainCircuit className="h-7 w-7" aria-hidden />
+          </span>
+
+          <p className="max-w-xl text-balance text-xl font-semibold leading-snug tracking-tight sm:text-2xl">
+            Profissionais em breve, no momento você será monitorado por uma IA
+            treinada e capacitada para isso.
+          </p>
+
+          <p className="mt-4 max-w-xl text-sm leading-relaxed text-ink-on/70 sm:text-base">
+            Estamos finalizando o credenciamento da equipe clínica. Até lá, seu
+            acompanhamento não para: a inteligência da plataforma segue lendo seus
+            registros e gerando orientações personalizadas.
+          </p>
+
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <ButtonLink href="/inicio" iconRight={ArrowRight} className="w-full sm:w-auto">
+              Continuar para o meu painel
+            </ButtonLink>
+            <span className="hidden text-sm text-ink-on/50 sm:inline">
+              Avisamos assim que houver profissionais disponíveis
+            </span>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {garantias.map((g) => (
+          <Card key={g.title} className="h-full">
+            <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-soft text-brand-text">
+              <g.icon className="h-5 w-5" aria-hidden />
+            </span>
+            <h3 className="text-sm font-bold">{g.title}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-muted">{g.text}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="flex items-start gap-3">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-subtle" aria-hidden />
+        <p className="text-sm text-muted">
+          A análise por IA é uma orientação de partida e não substitui avaliação
+          profissional. Assim que a equipe estiver disponível, você poderá vincular
+          seu acompanhamento a um profissional por aqui.
+        </p>
+      </Card>
     </div>
   );
 }

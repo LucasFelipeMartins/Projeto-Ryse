@@ -7,7 +7,15 @@ export type MessageView = {
   id: string;
   from: 'me' | 'them' | 'ai';
   text: string;
-  time: string;
+  /**
+   * Instante do envio, em ISO 8601 com fuso.
+   *
+   * Vai cru para o cliente de propósito. Formatar aqui usaria o relógio do
+   * servidor (UTC em produção) e a interface mostraria a hora errada — era
+   * exatamente o bug de "enviei 21:30, apareceu 18:30". Quem converte é o
+   * navegador, que conhece o fuso de quem lê.
+   */
+  at: string;
 };
 
 export type ConversationView = {
@@ -15,23 +23,27 @@ export type ConversationView = {
   peerId: string;
   peerName: string;
   peerMeta: string;
+  peerAvatarUrl: string | null;
   last: string;
   time: string;
   unread: number;
 };
 
-const clock = (iso: string) =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-
 function toView(
-  rows: { id: string; sender_id: string | null; sender_kind: SenderKind; body: string; created_at: string }[],
+  rows: {
+    id: string;
+    sender_id: string | null;
+    sender_kind: SenderKind;
+    body: string;
+    created_at: string;
+  }[],
   viewerId: string,
 ): MessageView[] {
   return rows.map((m) => ({
     id: m.id,
     from: m.sender_kind === 'ia' ? 'ai' : m.sender_id === viewerId ? 'me' : 'them',
     text: m.body,
-    time: clock(m.created_at),
+    at: m.created_at,
   }));
 }
 
@@ -50,14 +62,19 @@ export async function getPatientConversation(patientId: string) {
   const [{ data: convo }, { data: messages }] = await Promise.all([
     supabase
       .from('conversations')
-      .select('id, professional_id, profiles!conversations_professional_id_fkey(full_name, specialty)')
+      .select(
+        'id, professional_id, profiles!conversations_professional_id_fkey(full_name, specialty, avatar_url)',
+      )
       .eq('id', convoId)
       .single(),
+    // Ordenação pelo timestamp do banco, não pelo texto formatado: é o
+    // mesmo instante que a interface vai exibir, então lista e relógio
+    // nunca discordam.
     supabase
       .from('messages')
       .select('id, sender_id, sender_kind, body, created_at')
       .eq('conversation_id', convoId)
-      .order('created_at')
+      .order('created_at', { ascending: true })
       .limit(200),
   ]);
 
@@ -69,6 +86,7 @@ export async function getPatientConversation(patientId: string) {
     id: convo.id,
     peerName: pro?.full_name ?? 'Seu profissional',
     peerMeta: pro?.specialty ?? 'Profissional responsável',
+    peerAvatarUrl: pro?.avatar_url ?? null,
     messages: toView(messages ?? [], patientId),
   };
 }
@@ -83,7 +101,7 @@ export async function getProConversations(
   const { data } = await supabase
     .from('conversations')
     .select(
-      'id, patient_id, last_message_at, profiles!conversations_patient_id_fkey(full_name, plan)',
+      'id, patient_id, last_message_at, profiles!conversations_patient_id_fkey(full_name, plan, avatar_url)',
     )
     .eq('professional_id', professionalId)
     .order('last_message_at', { ascending: false });
@@ -128,6 +146,7 @@ export async function getProConversations(
       peerId: c.patient_id,
       peerName: patient?.full_name ?? 'Paciente',
       peerMeta: patient?.plan ? PLAN_LABEL[patient.plan] : 'Sem plano',
+      peerAvatarUrl: patient?.avatar_url ?? null,
       last: last?.body ?? 'Sem mensagens ainda.',
       time: last ? relativeTime(last.at) : '—',
       unread: unreadByConvo.get(c.id) ?? 0,
@@ -145,7 +164,7 @@ export async function getMessages(
     .from('messages')
     .select('id, sender_id, sender_kind, body, created_at')
     .eq('conversation_id', conversationId)
-    .order('created_at')
+    .order('created_at', { ascending: true })
     .limit(200);
 
   return toView(data ?? [], viewerId);

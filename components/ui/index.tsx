@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import { ChevronRight, type LucideIcon } from 'lucide-react';
-import { cn, initials } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import type { Tone } from '@/lib/types';
+
+// Reexportado para que todo o app continue importando de '@/components/ui'.
+export { Avatar, type AvatarSize } from '@/components/ui/avatar';
 
 /* ------------------------------------------------------------------- CARD */
 
@@ -187,47 +190,6 @@ export function IconButton({
     >
       <Icon className="h-5 w-5" aria-hidden />
     </button>
-  );
-}
-
-/* ----------------------------------------------------------------- AVATAR */
-
-export function Avatar({
-  name,
-  size = 'md',
-  online,
-  className,
-}: {
-  name: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg';
-  online?: boolean;
-  className?: string;
-}) {
-  const sizes = {
-    xs: 'h-7 w-7 text-[10px]',
-    sm: 'h-9 w-9 text-xs',
-    md: 'h-11 w-11 text-sm',
-    lg: 'h-14 w-14 text-base',
-  };
-  return (
-    <div className={cn('relative shrink-0', className)}>
-      <div
-        className={cn(
-          'flex items-center justify-center rounded-full border border-line',
-          'bg-surface-2 font-bold uppercase tracking-wide text-muted',
-          sizes[size],
-        )}
-        aria-hidden
-      >
-        {initials(name)}
-      </div>
-      {online && (
-        <span
-          className="absolute -bottom-0 -right-0 block h-3 w-3 rounded-full border-2 border-surface bg-success"
-          aria-label="online"
-        />
-      )}
-    </div>
   );
 }
 

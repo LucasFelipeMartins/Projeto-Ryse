@@ -6,9 +6,13 @@ import { useCallback, useState, useTransition } from 'react';
 import {
   Bell,
   ChevronLeft,
+  ChevronRight,
   LogOut,
+  Menu,
   MoreHorizontal,
   Search,
+  Settings,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -18,12 +22,19 @@ import {
   proMoreItems,
   proNav,
   proTabs,
+  settingsHrefFor,
+  type NavGroup,
   type NavItem,
 } from '@/lib/nav';
 import { signOut } from '@/lib/actions/auth';
 import type { SessionUser } from '@/lib/supabase/server';
 import { Avatar } from '@/components/ui';
-import { Sheet, ThemeToggle, useDismissOnRouteChange } from '@/components/ui/interactive';
+import {
+  Drawer,
+  Sheet,
+  ThemeToggle,
+  useDismissOnRouteChange,
+} from '@/components/ui/interactive';
 import { RyseMark, RyseWordmark } from '@/components/layout/brand';
 
 /* --------------------------------------------------------------- TÍTULOS */
@@ -39,12 +50,12 @@ const TITLES: Record<string, string> = {
   '/perfil': 'Perfil',
   '/checkin': 'Check-in semanal',
   '/mensagens': 'Mensagens',
+  '/notificacoes': 'Notificações',
   '/pro': 'Painel',
   '/pro/pacientes': 'Pacientes',
   '/pro/revisao': 'Revisão IA',
   '/pro/protocolos': 'Protocolos',
   '/pro/mensagens': 'Mensagens',
-  '/pro/financeiro': 'Faturamento',
   '/pro/config': 'Configurações',
 };
 
@@ -59,13 +70,20 @@ function titleFor(pathname: string) {
   return parent ? TITLES[parent] : 'Ryse';
 }
 
+const roleLabel = (user: SessionUser) =>
+  user.role === 'profissional'
+    ? (user.specialty ?? 'Profissional')
+    : (user.goal ?? user.email);
+
 /* ----------------------------------------------------------------- SHELL */
 
 export function AppShell({
   user,
+  unreadCount = 0,
   children,
 }: {
   user: SessionUser;
+  unreadCount?: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -75,8 +93,15 @@ export function AppShell({
   const tabs = isPro ? proTabs : patientTabs;
 
   const [moreOpen, setMoreOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const closeMore = useCallback(() => setMoreOpen(false), []);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  // Navegar fecha os dois — deixar um menu aberto sobre a tela nova é um
+  // clássico de app mobile mal resolvido.
   useDismissOnRouteChange(pathname, closeMore);
+  useDismissOnRouteChange(pathname, closeMenu);
 
   return (
     <div className="min-h-dvh bg-canvas">
@@ -84,7 +109,13 @@ export function AppShell({
 
       {/* lg:pl-64 abre espaço para a sidebar fixa do desktop */}
       <div className="lg:pl-64">
-        <TopBar pathname={pathname} isPro={isPro} />
+        <TopBar
+          pathname={pathname}
+          isPro={isPro}
+          user={user}
+          unreadCount={unreadCount}
+          onMenu={() => setMenuOpen(true)}
+        />
 
         <main
           id="conteudo"
@@ -98,7 +129,21 @@ export function AppShell({
         </main>
       </div>
 
-      <BottomNav tabs={tabs} pathname={pathname} isPro={isPro} onMore={() => setMoreOpen(true)} />
+      <BottomNav
+        tabs={tabs}
+        pathname={pathname}
+        user={user}
+        onMenu={() => setMenuOpen(true)}
+      />
+
+      <MobileMenu
+        open={menuOpen}
+        onClose={closeMenu}
+        user={user}
+        nav={nav}
+        pathname={pathname}
+        unreadCount={unreadCount}
+      />
 
       {isPro && (
         <Sheet
@@ -146,15 +191,148 @@ export function SignOutButton({ className }: { className?: string }) {
   );
 }
 
+/* ------------------------------------------------------------- MENU MOBILE */
+
+/**
+ * Menu principal do celular.
+ *
+ * Guarda o que não cabe na tab bar: avatar, nome, as seções do papel,
+ * notificações, configurações e sair. A tab bar fica com as quatro telas de
+ * uso diário — o resto mora aqui, a um toque.
+ *
+ * Os grupos vêm de `lib/nav.ts`, os mesmos do desktop, e são escolhidos pelo
+ * papel da sessão: um paciente nunca recebe a lista do profissional, nem por
+ * engano de rota.
+ */
+function MobileMenu({
+  open,
+  onClose,
+  user,
+  nav,
+  pathname,
+  unreadCount,
+}: {
+  open: boolean;
+  onClose: () => void;
+  user: SessionUser;
+  nav: NavGroup[];
+  pathname: string;
+  unreadCount: number;
+}) {
+  const isPro = user.role === 'profissional';
+
+  return (
+    <Drawer open={open} onClose={onClose} label="Menu principal">
+      {/* ------------------------------------------------ identidade */}
+      <div className="flex items-start gap-3 border-b border-line px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
+        <Link href={settingsHrefFor(isPro)} onClick={onClose} className="shrink-0">
+          <Avatar name={user.fullName} src={user.avatarUrl} size="lg" />
+        </Link>
+
+        <div className="min-w-0 flex-1 pt-1">
+          <p className="truncate text-base font-bold tracking-tight">{user.fullName}</p>
+          <p className="truncate text-sm text-muted">{roleLabel(user)}</p>
+          <span className="mt-1.5 inline-block rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-bold uppercase tracking-wider text-muted">
+            {isPro ? 'Profissional' : 'Cliente'}
+          </span>
+        </div>
+
+        <button
+          onClick={onClose}
+          aria-label="Fechar menu"
+          className="tap -mr-1 -mt-1 rounded-xl p-2 text-muted hover:bg-surface-2 hover:text-fg"
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+
+      {/* ------------------------------------------------ navegação */}
+      <nav className="scrollbar-thin flex-1 overflow-y-auto px-3 py-3">
+        {nav.map((group) => (
+          <div key={group.group} className="mb-4 last:mb-0">
+            <p className="px-3 pb-1.5 text-2xs font-bold uppercase tracking-wider text-subtle">
+              {group.group}
+            </p>
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const active = isActive(pathname, item);
+                const badge = item.href === '/notificacoes' ? unreadCount : 0;
+
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onClose}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-colors',
+                        active
+                          ? 'bg-brand-soft font-semibold text-brand-text'
+                          : 'text-muted active:bg-surface-2',
+                      )}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" aria-hidden />
+                      <span className="flex-1 truncate">{item.label}</span>
+
+                      {badge > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-2xs font-bold text-brand-on">
+                          {badge > 99 ? '99+' : badge}
+                        </span>
+                      )}
+
+                      <ChevronRight className="h-4 w-4 shrink-0 text-subtle" aria-hidden />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/* ------------------------------------------------ rodapé */}
+      <div className="border-t border-line px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
+        <Link
+          href={settingsHrefFor(isPro)}
+          onClick={onClose}
+          className="tap flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-muted active:bg-surface-2"
+        >
+          <Settings className="h-5 w-5 shrink-0" aria-hidden />
+          <span className="flex-1">Configurações</span>
+        </Link>
+
+        <div className="flex items-center gap-3 rounded-xl px-3 py-2">
+          <span className="flex-1 text-sm font-semibold text-muted">Tema</span>
+          <ThemeToggle className="h-9 w-9" />
+        </div>
+
+        <SignOutButton className="w-full rounded-xl px-3 py-3" />
+      </div>
+    </Drawer>
+  );
+}
+
 /* --------------------------------------------------------------- TOP BAR */
 
-function TopBar({ pathname, isPro }: { pathname: string; isPro: boolean }) {
+function TopBar({
+  pathname,
+  isPro,
+  user,
+  unreadCount,
+  onMenu,
+}: {
+  pathname: string;
+  isPro: boolean;
+  user: SessionUser;
+  unreadCount: number;
+  onMenu: () => void;
+}) {
   const router = useRouter();
   const detail = isDetail(pathname);
 
   return (
     <header className="glass sticky top-0 z-40 pt-safe">
-      <div className="mx-auto flex h-header w-full max-w-6xl items-center gap-2 px-2 sm:px-4 lg:px-8">
+      <div className="mx-auto flex h-header w-full max-w-6xl items-center gap-1 px-2 sm:px-4 lg:px-8">
         {detail ? (
           <button
             onClick={() => router.back()}
@@ -164,16 +342,19 @@ function TopBar({ pathname, isPro }: { pathname: string; isPro: boolean }) {
             <ChevronLeft className="h-6 w-6" aria-hidden />
           </button>
         ) : (
-          <Link href={isPro ? '/pro' : '/inicio'} className="ml-1.5 lg:hidden">
-            <RyseMark className="h-8 w-8" />
-            <span className="sr-only">Ryse — início</span>
-          </Link>
+          <button
+            onClick={onMenu}
+            aria-label="Abrir menu"
+            className="tap -ml-1 flex h-10 w-10 items-center justify-center rounded-xl text-fg hover:bg-surface-2 lg:hidden"
+          >
+            <Menu className="h-6 w-6" aria-hidden />
+          </button>
         )}
 
         <h1
           className={cn(
             'min-w-0 flex-1 truncate text-base font-bold tracking-tight lg:text-lg',
-            !detail && 'ml-1 lg:ml-0',
+            'ml-1 lg:ml-0',
           )}
         >
           {titleFor(pathname)}
@@ -193,15 +374,32 @@ function TopBar({ pathname, isPro }: { pathname: string; isPro: boolean }) {
           />
         </div>
 
-        <ThemeToggle />
+        <ThemeToggle className="hidden lg:inline-flex" />
 
         <Link
-          href={isPro ? '/pro/mensagens' : '/mensagens'}
-          aria-label="Notificações"
+          href={isPro ? '/pro/mensagens' : '/notificacoes'}
+          aria-label={
+            unreadCount > 0
+              ? `Notificações — ${unreadCount} não lidas`
+              : 'Notificações'
+          }
           className="tap relative flex h-10 w-10 items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-fg"
         >
           <Bell className="h-5 w-5" aria-hidden />
-          <span className="absolute right-2.5 top-2 h-2 w-2 rounded-full bg-brand ring-2 ring-canvas" />
+          {unreadCount > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-brand-on ring-2 ring-canvas">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </Link>
+
+        {/* O avatar no cabeçalho é o atalho de identidade no desktop. */}
+        <Link
+          href={settingsHrefFor(isPro)}
+          aria-label="Meu perfil"
+          className="ml-0.5 hidden rounded-full lg:block"
+        >
+          <Avatar name={user.fullName} src={user.avatarUrl} size="sm" />
         </Link>
       </div>
     </header>
@@ -213,13 +411,13 @@ function TopBar({ pathname, isPro }: { pathname: string; isPro: boolean }) {
 function BottomNav({
   tabs,
   pathname,
-  isPro,
-  onMore,
+  user,
+  onMenu,
 }: {
   tabs: NavItem[];
   pathname: string;
-  isPro: boolean;
-  onMore: () => void;
+  user: SessionUser;
+  onMenu: () => void;
 }) {
   return (
     <nav
@@ -259,19 +457,22 @@ function BottomNav({
           );
         })}
 
-        {isPro && (
-          <li className="flex-1">
-            <button
-              onClick={onMore}
-              className="tap flex h-full w-full flex-col items-center justify-center gap-1"
-            >
-              <MoreHorizontal className="h-[22px] w-[22px] text-subtle" aria-hidden />
-              <span className="text-[10px] font-semibold leading-none tracking-tight text-subtle">
-                Mais
-              </span>
-            </button>
-          </li>
-        )}
+        {/*
+          A quinta posição é o menu, e o gatilho é o próprio avatar: identidade
+          e navegação secundária no mesmo toque, sem gastar mais uma aba.
+        */}
+        <li className="flex-1">
+          <button
+            onClick={onMenu}
+            aria-label="Abrir menu"
+            className="tap flex h-full w-full flex-col items-center justify-center gap-1"
+          >
+            <Avatar name={user.fullName} src={user.avatarUrl} size="xs" />
+            <span className="text-[10px] font-semibold leading-none tracking-tight text-subtle">
+              Menu
+            </span>
+          </button>
+        </li>
       </ul>
     </nav>
   );
@@ -284,7 +485,7 @@ function Sidebar({
   user,
   pathname,
 }: {
-  nav: { group: string; items: NavItem[] }[];
+  nav: NavGroup[];
   user: SessionUser;
   pathname: string;
 }) {
@@ -337,15 +538,13 @@ function Sidebar({
 
       <div className="border-t border-line p-3">
         <Link
-          href={isPro ? '/pro/config' : '/perfil'}
+          href={settingsHrefFor(isPro)}
           className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2"
         >
-          <Avatar name={user.fullName} size="sm" />
+          <Avatar name={user.fullName} src={user.avatarUrl} size="sm" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{user.fullName}</p>
-            <p className="truncate text-xs text-muted">
-              {isPro ? (user.specialty ?? 'Profissional') : (user.goal ?? user.email)}
-            </p>
+            <p className="truncate text-xs text-muted">{roleLabel(user)}</p>
           </div>
         </Link>
 
@@ -354,3 +553,6 @@ function Sidebar({
     </aside>
   );
 }
+
+/** Reexportado para telas que precisam do mesmo botão fora do shell. */
+export { MoreHorizontal };

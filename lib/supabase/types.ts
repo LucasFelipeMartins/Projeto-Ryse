@@ -59,6 +59,28 @@ export type DocumentStatus =
   | 'aguardando_analise'
   | 'analisado'
   | 'erro';
+export type AiPriority = 'baixa' | 'media' | 'alta';
+export type AiDetailLevel = 'resumido' | 'padrao' | 'completo';
+export type AiRequestKind =
+  | 'dieta'
+  | 'ficha_treino'
+  | 'relatorio_nutricao'
+  | 'relatorio_treino'
+  | 'relatorio_saude'
+  | 'relatorio_exames'
+  | 'analise_protocolo';
+export type AiRequestStatus = 'reservado' | 'concluido' | 'falhou';
+export type AiOutputKind = AiRequestKind;
+export type NotificationCategory =
+  | 'geral'
+  | 'treino'
+  | 'hidratacao'
+  | 'checkin'
+  | 'relatorio'
+  | 'mensagem';
+export type Sex = 'feminino' | 'masculino' | 'outro';
+export type ActivityLevel = 'sedentario' | 'leve' | 'moderado' | 'intenso' | 'atleta';
+export type TrainingLevel = 'iniciante' | 'intermediario' | 'avancado';
 export type DocumentKind =
   | 'exame_laboratorial'
   | 'laudo_imagem'
@@ -96,6 +118,16 @@ export type ProfileRow = {
   specialty: string | null;
   onboarded_at: string | null;
   chose_solo_at: string | null;
+  sex: Sex | null;
+  activity_level: ActivityLevel | null;
+  training_level: TrainingLevel | null;
+  training_days: number | null;
+  routine: string | null;
+  food_preferences: string[];
+  food_restrictions: string[];
+  health_notes: string | null;
+  timezone: string;
+  water_goal_override_ml: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -353,7 +385,77 @@ export type NotificationPrefRow = {
   protocol_changes: boolean;
   workout_reminder: boolean;
   exam_results: boolean;
+  general_enabled: boolean;
+  hydration_reminder: boolean;
+  checkin_reminder: boolean;
+  reports: boolean;
+  messages: boolean;
+  quiet_from: string;
+  quiet_to: string;
   updated_at: string;
+};
+
+export type AiProtocolRow = {
+  id: string;
+  patient_id: string;
+  professional_id: string;
+  objective: string;
+  priority: AiPriority;
+  scopes: string[];
+  detail_level: AiDetailLevel;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AiUsageRow = {
+  id: string;
+  profile_id: string;
+  patient_id: string;
+  kind: AiRequestKind;
+  period_key: string;
+  status: AiRequestStatus;
+  output_id: string | null;
+  error_text: string | null;
+  requested_at: string;
+  finished_at: string | null;
+};
+
+export type AiOutputRow = {
+  id: string;
+  patient_id: string;
+  created_by: string | null;
+  kind: AiOutputKind;
+  title: string;
+  content: Json;
+  model: string | null;
+  created_at: string;
+};
+
+export type PushSubscriptionRow = {
+  id: string;
+  profile_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expired_at: string | null;
+};
+
+export type NotificationRow = {
+  id: string;
+  profile_id: string;
+  category: NotificationCategory;
+  title: string;
+  body: string;
+  url: string | null;
+  scheduled_for: string;
+  sent_at: string | null;
+  read_at: string | null;
+  skip_reason: string | null;
+  created_at: string;
 };
 
 /* --------------------------------------------------------------- DATABASE */
@@ -365,7 +467,11 @@ export type Database = {
       body_metrics: Table<BodyMetricRow, 'patient_id'>;
       hydration_logs: Table<HydrationLogRow, 'patient_id' | 'amount_ml'>;
       nutrition_plans: Table<NutritionPlanRow, 'patient_id' | 'title' | 'kcal_target'>;
-      meals: Table<MealRow, 'plan_id' | 'slot' | 'label' | 'serve_at' | 'title'>;
+      meals: Table<
+        MealRow,
+        'plan_id' | 'slot' | 'label' | 'serve_at' | 'title',
+        [Rel<'meals_plan_id_fkey', 'plan_id', 'nutrition_plans'>]
+      >;
       meal_items: Table<
         MealItemRow,
         'meal_id' | 'description',
@@ -373,7 +479,11 @@ export type Database = {
       >;
       meal_logs: Table<MealLogRow, 'patient_id' | 'meal_id'>;
       workout_plans: Table<WorkoutPlanRow, 'patient_id' | 'title'>;
-      workouts: Table<WorkoutRow, 'plan_id' | 'letter' | 'title' | 'focus'>;
+      workouts: Table<
+        WorkoutRow,
+        'plan_id' | 'letter' | 'title' | 'focus',
+        [Rel<'workouts_plan_id_fkey', 'plan_id', 'workout_plans'>]
+      >;
       exercises: Table<
         ExerciseRow,
         'workout_id' | 'name' | 'muscle',
@@ -424,6 +534,21 @@ export type Database = {
         HealthDocumentRow,
         'patient_id' | 'storage_path' | 'original_name' | 'mime_type' | 'size_bytes'
       >;
+      ai_protocols: Table<
+        AiProtocolRow,
+        'patient_id' | 'professional_id' | 'objective',
+        [
+          Rel<'ai_protocols_patient_id_fkey', 'patient_id', 'profiles'>,
+          Rel<'ai_protocols_professional_id_fkey', 'professional_id', 'profiles'>,
+        ]
+      >;
+      ai_usage: Table<AiUsageRow, 'profile_id' | 'patient_id' | 'kind' | 'period_key'>;
+      ai_outputs: Table<AiOutputRow, 'patient_id' | 'kind' | 'title'>;
+      push_subscriptions: Table<
+        PushSubscriptionRow,
+        'profile_id' | 'endpoint' | 'p256dh' | 'auth'
+      >;
+      notifications: Table<NotificationRow, 'profile_id' | 'category' | 'title' | 'body'>;
     };
     Views: Record<never, never>;
     Functions: {
@@ -442,6 +567,26 @@ export type Database = {
       documents_this_week: {
         Args: { target_patient: string };
         Returns: number;
+      };
+      latest_weight_kg: {
+        Args: { target_patient: string };
+        Returns: number | null;
+      };
+      current_week_start: {
+        Args: { target_profile: string };
+        Returns: string;
+      };
+      checkin_pending: {
+        Args: { target_patient: string };
+        Returns: boolean;
+      };
+      release_ai_reservation: {
+        Args: { reservation: string };
+        Returns: void;
+      };
+      complete_ai_reservation: {
+        Args: { reservation: string; output: string | null };
+        Returns: void;
       };
       list_professionals: {
         Args: Record<string, never>;
@@ -467,6 +612,12 @@ export type Database = {
       payment_status: PaymentStatus;
       document_status: DocumentStatus;
       document_kind: DocumentKind;
+      ai_priority: AiPriority;
+      ai_detail_level: AiDetailLevel;
+      ai_request_kind: AiRequestKind;
+      ai_request_status: AiRequestStatus;
+      ai_output_kind: AiOutputKind;
+      notification_category: NotificationCategory;
     };
     CompositeTypes: Record<never, never>;
   };

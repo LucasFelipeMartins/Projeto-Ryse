@@ -11,10 +11,24 @@ const PUBLIC_PREFIXES = [
   '/auth',
   '/offline',
   '/configurar',
+  // Portal do profissional. Precisa vir antes de qualquer regra sobre /pro:
+  // a tela que cria a sessão não pode exigir sessão.
+  '/pro/entrar',
+  '/pro/recuperar-senha',
 ];
 
 const isPublic = (pathname: string) =>
   PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
+/**
+ * Login correspondente à área pedida.
+ *
+ * Quem tenta abrir /pro/pacientes sem sessão é mandado para a entrada do
+ * profissional, não para a do cliente — cair no portal errado e ver
+ * "esta conta é de profissional" seria confuso.
+ */
+const loginPathFor = (pathname: string) =>
+  pathname.startsWith('/pro') ? '/pro/entrar' : '/entrar';
 
 /**
  * Renova a sessão a cada request e decide quem entra onde.
@@ -58,7 +72,7 @@ export async function updateSession(request: NextRequest) {
 
   if (!user && !isPublic(pathname)) {
     const login = request.nextUrl.clone();
-    login.pathname = '/entrar';
+    login.pathname = loginPathFor(pathname);
     login.search = '';
     // Guarda o destino para voltar depois do login.
     if (pathname !== '/') login.searchParams.set('proximo', pathname + search);

@@ -17,11 +17,42 @@ import { Avatar, Badge, Card, EmptyState } from '@/components/ui';
 import { Input } from '@/components/ui/interactive';
 import { markConversationRead, sendMessage } from '@/lib/actions/chat';
 import type { ConversationView, MessageView } from '@/lib/queries/chat';
-import { cn } from '@/lib/utils';
+import { cn, dayLabel, messageClock } from '@/lib/utils';
 
 /* ------------------------------------------------------------- MENSAGENS */
 
-function Bubble({ msg, peerName }: { msg: MessageView; peerName: string }) {
+/**
+ * Agrupa a conversa por dia, preservando a ordem cronológica.
+ *
+ * Feito no cliente porque o rótulo depende do fuso de quem lê: a mesma
+ * mensagem pode ser "ontem" para um e "hoje" para outro em fusos distintos.
+ */
+function agruparPorDia(mensagens: MessageView[]) {
+  const grupos: { label: string; mensagens: MessageView[] }[] = [];
+
+  for (const msg of mensagens) {
+    const label = dayLabel(msg.at);
+    const ultimo = grupos[grupos.length - 1];
+
+    if (ultimo && ultimo.label === label) {
+      ultimo.mensagens.push(msg);
+    } else {
+      grupos.push({ label, mensagens: [msg] });
+    }
+  }
+
+  return grupos;
+}
+
+function Bubble({
+  msg,
+  peerName,
+  peerAvatarUrl,
+}: {
+  msg: MessageView;
+  peerName: string;
+  peerAvatarUrl?: string | null;
+}) {
   if (msg.from === 'ai') {
     return (
       <div className="my-2 flex justify-center">
@@ -36,7 +67,9 @@ function Bubble({ msg, peerName }: { msg: MessageView; peerName: string }) {
   const mine = msg.from === 'me';
   return (
     <div className={cn('flex gap-2.5', mine ? 'justify-end' : 'justify-start')}>
-      {!mine && <Avatar name={peerName} size="xs" className="mt-auto" />}
+      {!mine && (
+        <Avatar name={peerName} src={peerAvatarUrl} size="xs" className="mt-auto" />
+      )}
       <div className="max-w-[78%] sm:max-w-[70%]">
         <div
           className={cn(
@@ -48,14 +81,20 @@ function Bubble({ msg, peerName }: { msg: MessageView; peerName: string }) {
         >
           {msg.text}
         </div>
-        <span
+        {/*
+          O horário é formatado aqui, no cliente, a partir do ISO que veio do
+          banco — é o que garante que a bolha mostre a hora do relógio de quem
+          lê, e não a do servidor.
+        */}
+        <time
+          dateTime={msg.at}
           className={cn(
             'mt-1 block text-2xs font-medium text-subtle',
             mine ? 'text-right' : 'text-left',
           )}
         >
-          {msg.time}
-        </span>
+          {messageClock(msg.at)}
+        </time>
       </div>
     </div>
   );
@@ -136,6 +175,7 @@ function Conversation({
   conversationId,
   peerName,
   peerMeta,
+  peerAvatarUrl,
   messages,
   onBack,
   showAiHint,
@@ -144,6 +184,7 @@ function Conversation({
   conversationId: string;
   peerName: string;
   peerMeta: string;
+  peerAvatarUrl?: string | null;
   messages: MessageView[];
   onBack?: () => void;
   showAiHint?: boolean;
@@ -162,10 +203,9 @@ function Conversation({
         id: `pending-${current.length}`,
         from: 'me' as const,
         text,
-        time: new Date().toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
+        // A bolha otimista usa o relógio local; quando o servidor confirma, o
+        // valor é substituído pelo `created_at` real da linha.
+        at: new Date().toISOString(),
       },
     ],
   );
@@ -199,7 +239,7 @@ function Conversation({
             <ChevronLeft className="h-5 w-5" aria-hidden />
           </button>
         )}
-        <Avatar name={peerName} size="sm" />
+        <Avatar name={peerName} src={peerAvatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold">{peerName}</h2>
           <p className="truncate text-2xs text-muted">{peerMeta}</p>
@@ -215,7 +255,27 @@ function Conversation({
             description="Escreva a primeira mensagem abaixo."
           />
         ) : (
-          optimistic.map((m) => <Bubble key={m.id} msg={m} peerName={peerName} />)
+          agruparPorDia(optimistic).map((grupo) => (
+            <div key={grupo.label} className="space-y-3">
+              {/* Separador de dia: "Hoje", "Ontem" ou a data. */}
+              <div className="flex items-center gap-3 py-1">
+                <span className="h-px flex-1 bg-line" aria-hidden />
+                <span className="text-2xs font-semibold uppercase tracking-wide text-subtle">
+                  {grupo.label}
+                </span>
+                <span className="h-px flex-1 bg-line" aria-hidden />
+              </div>
+
+              {grupo.mensagens.map((m) => (
+                <Bubble
+                  key={m.id}
+                  msg={m}
+                  peerName={peerName}
+                  peerAvatarUrl={peerAvatarUrl}
+                />
+              ))}
+            </div>
+          ))
         )}
         <div ref={endRef} />
       </div>
@@ -230,7 +290,13 @@ function Conversation({
 export function PatientChatView({
   conversation,
 }: {
-  conversation: { id: string; peerName: string; peerMeta: string; messages: MessageView[] };
+  conversation: {
+    id: string;
+    peerName: string;
+    peerMeta: string;
+    peerAvatarUrl: string | null;
+    messages: MessageView[];
+  };
 }) {
   return (
     <Card inset className="h-pane overflow-hidden">
@@ -238,6 +304,7 @@ export function PatientChatView({
         conversationId={conversation.id}
         peerName={conversation.peerName}
         peerMeta={conversation.peerMeta}
+        peerAvatarUrl={conversation.peerAvatarUrl}
         messages={conversation.messages}
         header={
           <Badge tone="brand" icon={Stethoscope} className="hidden sm:inline-flex">
@@ -329,7 +396,7 @@ export function ProInboxView({
                   {isActive && (
                     <span className="absolute inset-y-0 left-0 hidden w-1 bg-brand lg:block" />
                   )}
-                  <Avatar name={c.peerName} size="sm" />
+                  <Avatar name={c.peerName} src={c.peerAvatarUrl} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
                       <span
@@ -373,6 +440,7 @@ export function ProInboxView({
           conversationId={active.id}
           peerName={active.peerName}
           peerMeta={active.peerMeta}
+          peerAvatarUrl={active.peerAvatarUrl}
           messages={messages}
           onBack={() => setSelected(null)}
           showAiHint
