@@ -16,6 +16,7 @@ import {
   User,
   Users,
 } from 'lucide-react';
+import { ehRotaProfissional } from '@/lib/routes';
 
 export type Role = 'paciente' | 'pro';
 
@@ -127,5 +128,6 @@ export function isActive(pathname: string, item: NavItem) {
 }
 
 export function roleOf(pathname: string): Role {
-  return pathname.startsWith('/pro') ? 'pro' : 'paciente';
+  // Segmento inteiro: `/progresso` é tela de paciente, não de profissional.
+  return ehRotaProfissional(pathname) ? 'pro' : 'paciente';
 }

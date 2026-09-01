@@ -21,20 +21,50 @@
   Os campos abaixo são exatamente o que a IA usa para personalizar dieta,
   ficha e relatório. Nada é decorativo.
 */
-alter table profiles
-  add column if not exists sex                text
-    check (sex in ('feminino', 'masculino', 'outro')),
-  add column if not exists activity_level     text
-    check (activity_level in ('sedentario', 'leve', 'moderado', 'intenso', 'atleta')),
-  add column if not exists training_level     text
-    check (training_level in ('iniciante', 'intermediario', 'avancado')),
-  add column if not exists training_days      integer
-    check (training_days between 0 and 7),
-  add column if not exists routine            text,
-  add column if not exists food_preferences   text[] not null default '{}',
-  add column if not exists food_restrictions  text[] not null default '{}',
-  add column if not exists health_notes       text,
-  add column if not exists timezone           text not null default 'America/Sao_Paulo';
+/*
+  Uma coluna por comando, e as restrições depois — não como CHECK inline.
+
+  Agrupar as nove num único ALTER é mais compacto, mas transforma o bloco em
+  tudo-ou-nada: basta um detalhe em qualquer cláusula para as outras oito não
+  entrarem. O resultado é o pior dos estados, porque parece que a migration
+  rodou: as tabelas mais adiante são criadas, as colunas não, e o login quebra
+  com uma mensagem que aponta para o lugar errado.
+
+  Separadas, uma falha isolada não leva as demais junto.
+*/
+alter table profiles add column if not exists sex               text;
+alter table profiles add column if not exists activity_level    text;
+alter table profiles add column if not exists training_level    text;
+alter table profiles add column if not exists training_days     integer;
+alter table profiles add column if not exists routine           text;
+alter table profiles add column if not exists food_preferences  text[] not null default '{}';
+alter table profiles add column if not exists food_restrictions text[] not null default '{}';
+alter table profiles add column if not exists health_notes      text;
+alter table profiles add column if not exists timezone          text not null default 'America/Sao_Paulo';
+
+-- As restrições vêm em seguida: assim uma linha antiga com valor fora da
+-- faixa impede só o ADD CONSTRAINT, e não o nascimento da coluna.
+alter table profiles drop constraint if exists profiles_sex_check;
+alter table profiles add constraint profiles_sex_check
+  check (sex is null or sex in ('feminino', 'masculino', 'outro'));
+
+alter table profiles drop constraint if exists profiles_activity_level_check;
+alter table profiles add constraint profiles_activity_level_check
+  check (
+    activity_level is null
+    or activity_level in ('sedentario', 'leve', 'moderado', 'intenso', 'atleta')
+  );
+
+alter table profiles drop constraint if exists profiles_training_level_check;
+alter table profiles add constraint profiles_training_level_check
+  check (
+    training_level is null
+    or training_level in ('iniciante', 'intermediario', 'avancado')
+  );
+
+alter table profiles drop constraint if exists profiles_training_days_check;
+alter table profiles add constraint profiles_training_days_check
+  check (training_days is null or training_days between 0 and 7);
 
 comment on column profiles.onboarded_at is
   'Marca o fim do formulário inicial. NULL = o app redireciona para /onboarding.';
@@ -50,9 +80,14 @@ comment on column profiles.onboarded_at is
   O override existe para quando o profissional prescreve um volume específico
   — aí o valor manual vence o cálculo, e só nesse caso.
 */
-alter table profiles
-  add column if not exists water_goal_override_ml integer
-    check (water_goal_override_ml between 500 and 10000);
+alter table profiles add column if not exists water_goal_override_ml integer;
+
+alter table profiles drop constraint if exists profiles_water_goal_override_ml_check;
+alter table profiles add constraint profiles_water_goal_override_ml_check
+  check (
+    water_goal_override_ml is null
+    or water_goal_override_ml between 500 and 10000
+  );
 
 comment on column profiles.water_goal_override_ml is
   'Meta manual. NULL = usar o cálculo automático a partir do peso mais recente.';

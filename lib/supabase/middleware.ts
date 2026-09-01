@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/lib/supabase/types';
+import { origemParaRedirect } from '@/lib/url';
+import { loginDaRota } from '@/lib/routes';
 
 /** Tudo que dispensa sessão. */
 const PUBLIC_PREFIXES = [
@@ -19,16 +21,6 @@ const PUBLIC_PREFIXES = [
 
 const isPublic = (pathname: string) =>
   PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
-/**
- * Login correspondente à área pedida.
- *
- * Quem tenta abrir /pro/pacientes sem sessão é mandado para a entrada do
- * profissional, não para a do cliente — cair no portal errado e ver
- * "esta conta é de profissional" seria confuso.
- */
-const loginPathFor = (pathname: string) =>
-  pathname.startsWith('/pro') ? '/pro/entrar' : '/entrar';
 
 /**
  * Renova a sessão a cada request e decide quem entra onde.
@@ -71,12 +63,49 @@ export async function updateSession(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (!user && !isPublic(pathname)) {
-    const login = request.nextUrl.clone();
-    login.pathname = loginPathFor(pathname);
-    login.search = '';
+    /*
+      O destino é montado a partir dos cabeçalhos do proxy, não de
+      `request.nextUrl`.
+
+      Atrás de um proxy reverso (Render, Fly, Railway, qualquer container
+      atrás de um load balancer) a borda termina o TLS e encaminha para algo
+      como `http://localhost:10000`. `request.nextUrl` carrega esse endereço
+      interno, e redirecionar com ele mandava o navegador para `localhost` —
+      o "ERR_CONNECTION_REFUSED" logo depois do login.
+
+      Um `Location` relativo resolveria isso de forma ainda mais limpa, mas o
+      middleware do Next valida a URL e recusa caminho relativo com
+      `ERR_INVALID_URL`.
+
+      `origemParaRedirect` cobre os três cenários: configuração explícita,
+      cabeçalhos do proxy, e — quando nada é confiável — a própria origem da
+      requisição. Esta última faz o destino ficar na mesma origem, e aí o Next
+      serializa o `Location` como caminho relativo, que o navegador resolve
+      corretamente. Nunca misturamos host interno com protocolo do proxy: era
+      isso que gerava `https://localhost:10000`.
+    */
+    const origem = origemParaRedirect(request.headers, request.nextUrl.origin);
+
+    /*
+      Quem tenta abrir /pro/pacientes sem sessão vai para a entrada do
+      profissional, não para a do cliente. `loginDaRota` compara o segmento
+      inteiro: um `startsWith('/pro')` cru casaria com `/progresso`, que é
+      tela de paciente.
+    */
+    const login = new URL(loginDaRota(pathname), origem);
     // Guarda o destino para voltar depois do login.
     if (pathname !== '/') login.searchParams.set('proximo', pathname + search);
-    return NextResponse.redirect(login);
+
+    const redirect = NextResponse.redirect(login);
+
+    /*
+      Os cookies renovados por `getUser()` precisam sobreviver ao desvio. Sem
+      isto, um token que acabou de ser atualizado se perderia e o próximo
+      request repetiria a ida ao login.
+    */
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
+
+    return redirect;
   }
 
   /*

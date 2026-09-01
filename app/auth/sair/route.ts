@@ -9,18 +9,27 @@ import { createClient } from '@/lib/supabase/server';
  * cookies — e é exatamente disso que `signOut()` precisa. É também a saída
  * para o estado inconsistente "existe usuário no auth, mas não existe
  * perfil": sem isso, o app ficaria repicando entre / e /entrar.
+ *
+ * O destino é relativo: montá-lo a partir de `request.url` levaria ao host
+ * interno do processo quando há um proxy na frente.
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const motivo = searchParams.get('motivo');
+  // O portal de origem sobrevive ao logout, para o profissional voltar à
+  // porta dele em vez de cair na do cliente.
+  const portal = searchParams.get('portal');
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
     await supabase.auth.signOut();
   }
 
-  const destino = new URL('/entrar', origin);
-  if (motivo) destino.searchParams.set('erro', motivo);
+  const base = portal === 'profissional' ? '/pro/entrar' : '/entrar';
+  const query = motivo ? `?erro=${encodeURIComponent(motivo)}` : '';
 
-  return NextResponse.redirect(destino);
+  return new NextResponse(null, {
+    status: 303,
+    headers: { Location: `${base}${query}` },
+  });
 }

@@ -97,13 +97,33 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     aqui. Uma string concatenada vira `string` para o TypeScript, e todo o
     retorno perde a tipagem.
   */
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from('profiles')
     .select(
       'id, email, full_name, role, avatar_url, plan, goal, height_cm, water_goal_ml, water_goal_override_ml, kcal_goal, steps_goal, professional_id, chose_solo_at, crm, specialty, created_at, onboarded_at, phone, birth_date, sex, activity_level, training_level, training_days, routine, food_preferences, food_restrictions, health_notes, timezone',
     )
     .eq('id', user.id)
     .single();
+
+  /*
+    O erro precisa aparecer no log do servidor.
+
+    Sem isto, qualquer falha aqui virava um silencioso "perfil ausente" e o
+    usuário era deslogado — inclusive quando o perfil existia perfeitamente e
+    o problema era outro. O caso mais comum: a aplicação foi atualizada mas a
+    migration ainda não rodou no banco, então o SELECT pede colunas que não
+    existem (`42703`) e devolve erro em vez de linha.
+  */
+  if (error) {
+    console.error(
+      '[auth] falha ao ler o perfil:',
+      error.code,
+      error.message,
+      error.code === '42703'
+        ? '-> o banco está desatualizado: rode supabase/migrations/20260101000005_plataforma.sql'
+        : '',
+    );
+  }
 
   if (!profile) return null;
 
@@ -167,13 +187,35 @@ export async function requireUser(): Promise<SessionUser> {
 
   const user = await getSessionUser();
 
-  /*
-    Há sessão no auth mas não há perfil — o gatilho handle_new_user não
-    rodou, ou a linha foi apagada. Mandar para /entrar não resolveria: o
-    cookie continua válido, e o app voltaria para cá em laço. A saída é
-    encerrar a sessão de fato, o que só um Route Handler consegue fazer.
-  */
-  if (!user) redirect('/auth/sair?motivo=perfil_ausente');
+  if (!user) {
+    /*
+      Duas causas muito diferentes levam a `getSessionUser()` devolver nulo, e
+      tratá-las igual foi o que criou o laço de logout:
+
+        (a) a linha do perfil não existe mesmo — o gatilho `handle_new_user`
+            não rodou, ou alguém apagou o registro;
+        (b) a linha existe, mas a leitura falhou — quase sempre porque a
+            aplicação foi atualizada e a migration ainda não rodou no banco,
+            então o SELECT pede colunas inexistentes.
+
+      No caso (b), deslogar é o pior desfecho possível: destrói a sessão de
+      quem acabou de entrar corretamente e deixa a conta inacessível, com uma
+      mensagem ("perfil ausente") que aponta para o lugar errado. Uma consulta
+      mínima separa os dois casos.
+    */
+    const supabase = await createClient();
+    const { data: existe } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    // (b) o perfil está lá: o problema é o schema, não a conta.
+    if (existe) redirect('/configurar?motivo=schema');
+
+    // (a) encerrar a sessão de fato, o que só um Route Handler consegue fazer.
+    redirect('/auth/sair?motivo=perfil_ausente');
+  }
 
   return user;
 }

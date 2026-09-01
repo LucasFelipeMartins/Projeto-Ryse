@@ -9,7 +9,8 @@
     "start": "next start",
     "icons": "node scripts/generate-icons.mjs",
     "typecheck": "tsc --noEmit",
-    "admin": "node scripts/admin.mjs"
+    "admin": "node scripts/admin.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

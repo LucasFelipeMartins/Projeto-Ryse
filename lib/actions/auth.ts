@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { urlPublica } from '@/lib/url';
+import { ehRotaProfissional } from '@/lib/routes';
 
 export type AuthState = {
   error?: string;
@@ -53,16 +55,17 @@ function translate(message: string) {
   return map[message] ?? 'Não foi possível concluir. Tente novamente.';
 }
 
-/** URL pública do app, para montar os links enviados por e-mail. */
+/**
+ * URL pública do app, para montar os links enviados por e-mail.
+ *
+ * A resolução mora em `lib/url.ts` porque a regra tem sutileza: um
+ * `NEXT_PUBLIC_SITE_URL` apontando para localhost — sobra de um `.env.local`
+ * copiado para o servidor ao trocar de hospedagem — é descartado em favor dos
+ * cabeçalhos do proxy. Sem isso, o link de redefinição de senha chegaria ao
+ * usuário apontando para a máquina de quem programou.
+ */
 async function siteUrl() {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) return configured.replace(/\/$/, '');
-
-  // Fallback: reconstrói a partir do request (cobre previews da Vercel).
-  const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
-  const proto = h.get('x-forwarded-proto') ?? (host.includes('localhost') ? 'http' : 'https');
-  return `${proto}://${host}`;
+  return urlPublica(await headers());
 }
 
 /* ---------------------------------------------------------------- ENTRAR --- */
@@ -126,14 +129,20 @@ async function authenticate(
   // Só aceita caminho interno — evita open redirect via ?proximo=
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : null;
 
+  /*
+    O destino guardado só é aceito se pertencer à área do papel que entrou.
+    A comparação usa `ehRotaProfissional`, e não `startsWith('/pro')`: este
+    último casaria com `/progresso` e devolveria um paciente à home em vez
+    de levá-lo à tela que ele havia pedido.
+  */
   if (profile.role === 'profissional') {
-    redirect(safeNext && safeNext.startsWith('/pro') ? safeNext : '/pro');
+    redirect(safeNext && ehRotaProfissional(safeNext) ? safeNext : '/pro');
   }
 
   // Cliente sem onboarding vai para o formulário, não para o dashboard.
   if (!profile.onboarded_at) redirect('/onboarding');
 
-  redirect(safeNext && !safeNext.startsWith('/pro') ? safeNext : '/inicio');
+  redirect(safeNext && !ehRotaProfissional(safeNext) ? safeNext : '/inicio');
 }
 
 /** Entrada do cliente. */
