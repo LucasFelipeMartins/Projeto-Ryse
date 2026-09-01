@@ -298,24 +298,12 @@ export function SignInForm({
 export function SignUpForm() {
   const [state, action] = useActionState<AuthState, FormData>(signUp, {});
 
-  // Depois do "confira seu e-mail" não faz sentido manter o formulário.
-  if (state.notice) {
-    return (
-      <>
-        <Header
-          title="Confira seu e-mail"
-          subtitle="Falta só um passo para ativar sua conta."
-        />
-        <Alert kind="ok">{state.notice}</Alert>
-        <Link
-          href="/entrar"
-          className="tap flex h-12 w-full items-center justify-center rounded-xl border border-line bg-surface text-sm font-semibold"
-        >
-          Voltar para o login
-        </Link>
-      </>
-    );
-  }
+  /*
+    O aviso de "confira seu e-mail" virou tela própria (/verificar-email),
+    porque ali cabe o reenvio — e o e-mail de confirmação se perde com
+    frequência suficiente para que não ter esse caminho signifique perder o
+    cadastro. `signUp` redireciona para lá; aqui não sobra ramo de sucesso.
+  */
 
   return (
     <>

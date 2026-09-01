@@ -63,6 +63,7 @@ const COLUNAS_DO_PERFIL = [
   'onboarded_at, phone, birth_date, sex, activity_level',
   'training_level, training_days, routine, food_preferences',
   'food_restrictions, health_notes, timezone',
+  'is_admin, must_change_password',
 ].join(', ');
 
 const TABELAS = [
@@ -81,6 +82,7 @@ const TABELAS = [
 
 const FUNCOES = [
   { nome: 'list_professionals', args: {}, migration: '004_escolha' },
+  { nome: 'is_admin', args: {}, migration: '006_admin' },
   { nome: 'checkin_pending', args: { target_patient: ZERO() }, migration: '005_plataforma' },
   { nome: 'current_week_start', args: { target_profile: ZERO() }, migration: '005_plataforma' },
   { nome: 'latest_weight_kg', args: { target_patient: ZERO() }, migration: '005_plataforma' },
@@ -216,9 +218,10 @@ console.log('\x1b[31mPendências encontradas:\x1b[0m');
 for (const p of [...new Set(problemas)]) console.log(`  • ${p}`);
 
 console.log(
-  '\nCaminho mais curto: abra o SQL Editor do Supabase e execute o conteúdo de',
+  '\nCaminho mais curto: abra o SQL Editor do Supabase e execute, em ordem,',
 );
 console.log('  supabase/migrations/20260101000005_plataforma.sql');
+console.log('  supabase/migrations/20260101000006_admin_e_acesso.sql');
 console.log('(a migration é idempotente — rodar de novo não causa dano)\n');
 
 process.exit(1);

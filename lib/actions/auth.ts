@@ -42,6 +42,10 @@ function translate(message: string) {
     'Invalid login credentials': 'E-mail ou senha incorretos.',
     'Email not confirmed':
       'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
+    'Email link is invalid or has expired':
+      'Esse link não é mais válido. Peça um novo.',
+    'Token has expired or is invalid':
+      'Esse link expirou. Peça um novo para continuar.',
     'User already registered': 'Já existe uma conta com esse e-mail.',
     'Password should be at least 6 characters.':
       `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`,
@@ -97,11 +101,22 @@ async function authenticate(
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (error) return { error: translate(error.message), values: { email } };
+  if (error) {
+    /*
+      E-mail ainda não confirmado não é erro de credencial — é um passo que
+      falta. Mandar para a tela de verificação, com o endereço já preenchido,
+      dá saída a quem perdeu o primeiro e-mail; uma mensagem de erro seca
+      deixaria a pessoa presa sem saber que existe reenvio.
+    */
+    if (/not confirmed|Email not confirmed/i.test(error.message)) {
+      redirect(`/verificar-email?email=${encodeURIComponent(email)}`);
+    }
+    return { error: translate(error.message), values: { email } };
+  }
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, onboarded_at')
+    .select('role, onboarded_at, must_change_password')
     .eq('id', data.user.id)
     .single();
 
@@ -125,6 +140,13 @@ async function authenticate(
   }
 
   revalidatePath('/', 'layout');
+
+  /*
+    Senha provisória em uso: nenhuma tela do app abre antes da troca. Vem
+    antes até do onboarding — de nada adianta preencher o perfil com uma
+    credencial que circulou por mensagem.
+  */
+  if (profile.must_change_password) redirect('/definir-senha');
 
   // Só aceita caminho interno — evita open redirect via ?proximo=
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : null;
@@ -190,13 +212,17 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
 
   if (error) return { error: translate(error.message), values };
 
-  // Sem sessão = o projeto exige confirmação por e-mail.
+  /*
+    Sem sessão = o projeto exige confirmação por e-mail, que é o
+    comportamento desejado: a conta existe, mas não entra em lugar nenhum
+    até o endereço ser provado.
+
+    A tela dedicada substitui o aviso que ficava aqui porque ela oferece o
+    reenvio — e o e-mail de confirmação some com frequência suficiente para
+    que não ter esse caminho signifique perder o cadastro.
+  */
   if (!data.session) {
-    return {
-      notice:
-        'Conta criada. Enviamos um link de confirmação para o seu e-mail — ' +
-        'abra-o para ativar o acesso.',
-    };
+    redirect(`/verificar-email?email=${encodeURIComponent(email)}`);
   }
 
   revalidatePath('/', 'layout');

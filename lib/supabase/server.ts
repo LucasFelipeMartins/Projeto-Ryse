@@ -72,6 +72,10 @@ export type SessionUser = {
   foodRestrictions: string[];
   healthNotes: string | null;
   timezone: string;
+  /* ------------------------------------------------------- acesso */
+  isAdmin: boolean;
+  /** Senha provisória em uso: o app só libera /definir-senha. */
+  mustChangePassword: boolean;
 };
 
 /**
@@ -100,7 +104,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   const { data: profile, error } = await supabase
     .from('profiles')
     .select(
-      'id, email, full_name, role, avatar_url, plan, goal, height_cm, water_goal_ml, water_goal_override_ml, kcal_goal, steps_goal, professional_id, chose_solo_at, crm, specialty, created_at, onboarded_at, phone, birth_date, sex, activity_level, training_level, training_days, routine, food_preferences, food_restrictions, health_notes, timezone',
+      'id, email, full_name, role, avatar_url, plan, goal, height_cm, water_goal_ml, water_goal_override_ml, kcal_goal, steps_goal, professional_id, chose_solo_at, crm, specialty, created_at, onboarded_at, phone, birth_date, sex, activity_level, training_level, training_days, routine, food_preferences, food_restrictions, health_notes, timezone, is_admin, must_change_password',
     )
     .eq('id', user.id)
     .single();
@@ -157,6 +161,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     foodRestrictions: profile.food_restrictions ?? [],
     healthNotes: profile.health_notes,
     timezone: profile.timezone ?? 'America/Sao_Paulo',
+    isAdmin: profile.is_admin ?? false,
+    mustChangePassword: profile.must_change_password ?? false,
   };
 });
 
@@ -230,6 +236,27 @@ export async function requireUser(): Promise<SessionUser> {
 export async function requireProfessional(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== 'profissional') redirect('/inicio');
+  // Senha provisória ainda em uso: nada é liberado antes da troca.
+  if (user.mustChangePassword) redirect('/definir-senha');
+  return user;
+}
+
+/**
+ * Exige permissão de administrador.
+ *
+ * O admin é uma marca sobre a conta, não um papel à parte — ele continua
+ * sendo paciente ou profissional no restante do app. Por isso a checagem é
+ * independente de `role`.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+
+  if (!user.isAdmin) {
+    // Sem pista de que a área existe: quem não é admin vê a própria home.
+    redirect(homeFor(user.role));
+  }
+  if (user.mustChangePassword) redirect('/definir-senha');
+
   return user;
 }
 
@@ -244,6 +271,7 @@ export async function requireProfessional(): Promise<SessionUser> {
 export async function requirePatient(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== 'paciente') redirect('/pro');
+  if (user.mustChangePassword) redirect('/definir-senha');
   if (!user.onboardedAt) redirect('/onboarding');
   return user;
 }
@@ -256,6 +284,7 @@ export async function requirePatient(): Promise<SessionUser> {
 export async function requirePatientRaw(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== 'paciente') redirect('/pro');
+  if (user.mustChangePassword) redirect('/definir-senha');
   return user;
 }
 

@@ -13,6 +13,8 @@ const PUBLIC_PREFIXES = [
   '/auth',
   '/offline',
   '/configurar',
+  // Passo entre cadastrar e entrar: ainda não há sessão para exigir.
+  '/verificar-email',
   // Portal do profissional. Precisa vir antes de qualquer regra sobre /pro:
   // a tela que cria a sessão não pode exigir sessão.
   '/pro/entrar',

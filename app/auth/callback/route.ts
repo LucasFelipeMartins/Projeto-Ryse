@@ -16,21 +16,46 @@ export async function GET(request: NextRequest) {
 
   if (!isSupabaseConfigured()) return redirecionar('/configurar');
 
-  const code = searchParams.get('code');
   const nextParam = searchParams.get('proximo') ?? '/';
 
   // Só caminho interno — bloqueia redirect para domínio externo.
   const next =
     nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
 
-  if (!code) return redirecionar('/entrar?erro=link_invalido');
-
   const supabase = await createClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
 
-  if (error) return redirecionar('/entrar?erro=link_expirado');
+  /*
+    Dois formatos de link chegam aqui, e qual deles o Supabase envia depende
+    do template de e-mail configurado no painel:
 
-  return redirecionar(next);
+      ?code=…                        fluxo PKCE (`{{ .ConfirmationURL }}`)
+      ?token_hash=…&type=recovery    verificação por OTP (`{{ .TokenHash }}`)
+
+    Aceitar só o primeiro fazia o link de recuperação morrer em
+    "link inválido" sempre que o template usava o segundo — sem nenhuma pista
+    do porquê. Tratar os dois elimina a dependência de qual template está no
+    projeto.
+  */
+  const code = searchParams.get('code');
+  const tokenHash = searchParams.get('token_hash');
+  const type = searchParams.get('type');
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return redirecionar('/entrar?erro=link_expirado');
+    return redirecionar(next);
+  }
+
+  if (tokenHash && type) {
+    const { error } = await supabase.auth.verifyOtp({
+      type: type as 'recovery' | 'signup' | 'email' | 'magiclink' | 'invite',
+      token_hash: tokenHash,
+    });
+    if (error) return redirecionar('/entrar?erro=link_expirado');
+    return redirecionar(next);
+  }
+
+  return redirecionar('/entrar?erro=link_invalido');
 }
 
 /** 303: o navegador troca o método para GET e não reenvia o `code`. */

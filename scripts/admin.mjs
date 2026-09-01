@@ -113,7 +113,7 @@ async function status() {
 async function listar() {
   const { data, error } = await db
     .from('profiles')
-    .select('email, full_name, role, professional_id')
+    .select('email, full_name, role, professional_id, is_admin')
     .order('role')
     .order('full_name');
 
@@ -125,12 +125,62 @@ async function listar() {
 
   console.log('');
   for (const p of data) {
-    const vinculo = p.professional_id ? ' (vinculado)' : '';
+    const marcas = [
+      p.professional_id ? 'vinculado' : null,
+      p.is_admin ? 'ADMIN' : null,
+    ].filter(Boolean);
+
+    const sufixo = marcas.length ? ` (${marcas.join(', ')})` : '';
+
     console.log(
-      `  ${p.role.padEnd(13)} ${p.email.padEnd(32)} ${p.full_name}${vinculo}`,
+      `  ${p.role.padEnd(13)} ${p.email.padEnd(32)} ${p.full_name}${sufixo}`,
     );
   }
   console.log('');
+}
+
+/**
+ * Concede (ou remove) a permissão de administrador.
+ *
+ * Só existe como script porque `is_admin` é coluna protegida: o gatilho
+ * `guard_privileged_profile_columns` recusa a alteração vinda de qualquer
+ * sessão de usuário. Escrever com a chave secreta é o único caminho — e é o
+ * que se quer, já que o admin pode criar acessos profissionais.
+ *
+ * O primeiro administrador tem de nascer aqui. Depois disso, a área /admin
+ * cuida do resto.
+ */
+async function admin(email, acao = 'conceder') {
+  if (!email) {
+    fail('Uso: node scripts/admin.mjs admin voce@email.com [remover]');
+  }
+
+  const profile = await findByEmail(email);
+  if (!profile) fail(`Conta não encontrada: ${email}. Cadastre-se primeiro.`);
+
+  const conceder = acao !== 'remover';
+
+  const { error } = await db
+    .from('profiles')
+    .update({ is_admin: conceder })
+    .eq('id', profile.id);
+
+  if (error) {
+    if (/column .*is_admin/i.test(error.message)) {
+      fail(
+        'A coluna is_admin não existe. Rode antes:\n' +
+          '  supabase/migrations/20260101000006_admin_e_acesso.sql',
+      );
+    }
+    fail(error.message);
+  }
+
+  if (conceder) {
+    ok(`${profile.full_name} agora é administrador.`);
+    console.log('\n  A área aparece em /admin e no menu do app.\n');
+  } else {
+    ok(`${profile.full_name} não é mais administrador.`);
+  }
 }
 
 async function promover(email) {
@@ -285,7 +335,14 @@ async function criarProfissional(email, senha) {
 
 const [command, ...args] = process.argv.slice(2);
 
-const commands = { status, listar, promover, vincular, 'criar-profissional': criarProfissional };
+const commands = {
+  status,
+  listar,
+  admin,
+  promover,
+  vincular,
+  'criar-profissional': criarProfissional,
+};
 
 if (!command || !commands[command]) {
   console.log(`
@@ -293,6 +350,7 @@ Comandos disponíveis:
 
   status                          verifica se as tabelas existem
   listar                          lista as contas cadastradas
+  admin     <email> [remover]     concede/remove acesso à área /admin
   promover  <email>               torna a conta um profissional
   vincular  <paciente> <medico>   liga um paciente ao profissional
 

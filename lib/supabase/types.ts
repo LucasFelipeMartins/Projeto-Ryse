@@ -128,6 +128,8 @@ export type ProfileRow = {
   health_notes: string | null;
   timezone: string;
   water_goal_override_ml: number | null;
+  is_admin: boolean;
+  must_change_password: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -583,6 +585,14 @@ export type Database = {
       release_ai_reservation: {
         Args: { reservation: string };
         Returns: void;
+      };
+      finish_password_setup: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
       };
       complete_ai_reservation: {
         Args: { reservation: string; output: string | null };

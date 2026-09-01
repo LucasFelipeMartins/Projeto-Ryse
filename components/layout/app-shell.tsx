@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Search,
   Settings,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -292,6 +293,22 @@ function MobileMenu({
 
       {/* ------------------------------------------------ rodapé */}
       <div className="border-t border-line px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
+        {/*
+          A entrada da administração só aparece para quem é admin. Não é
+          segurança — `requireAdmin()` é que barra —, é para não anunciar uma
+          área que a maioria não pode abrir.
+        */}
+        {user.isAdmin && (
+          <Link
+            href="/admin"
+            onClick={onClose}
+            className="tap flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-brand-text active:bg-surface-2"
+          >
+            <ShieldCheck className="h-5 w-5 shrink-0" aria-hidden />
+            <span className="flex-1">Administração</span>
+          </Link>
+        )}
+
         <Link
           href={settingsHrefFor(isPro)}
           onClick={onClose}
@@ -537,6 +554,16 @@ function Sidebar({
       </nav>
 
       <div className="border-t border-line p-3">
+        {user.isAdmin && (
+          <Link
+            href="/admin"
+            className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-brand-text transition-colors hover:bg-surface-2"
+          >
+            <ShieldCheck className="h-[18px] w-[18px] shrink-0" aria-hidden />
+            <span className="flex-1 truncate">Administração</span>
+          </Link>
+        )}
+
         <Link
           href={settingsHrefFor(isPro)}
           className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-surface-2"
