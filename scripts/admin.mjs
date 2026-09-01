@@ -259,14 +259,24 @@ async function criarProfissional(email, senha) {
     console.log('  (nenhum paciente solto para vincular)');
   }
 
+  /*
+    O endereço é /pro/entrar, não /entrar.
+
+    Desde a separação dos portais, a entrada do cliente RECUSA conta de
+    profissional — ela encerra a sessão e devolve uma mensagem pedindo para
+    usar a área profissional. Mandar para /entrar aqui faria o script
+    entregar credenciais junto com um caminho que não funciona.
+  */
   console.log(`
 ─────────────────────────────────────────────
-  Entre em /entrar com:
+  Entre em /pro/entrar com:
 
     e-mail: ${email}
     senha:  ${password}
 
-  Você cai direto em /pro.
+  Guarde a senha agora: ela é gravada como hash e não há
+  como consultá-la depois. Para trocar, rode este mesmo
+  comando com a senha desejada no fim.
 ─────────────────────────────────────────────
 `);
 }
