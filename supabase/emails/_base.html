@@ -1,0 +1,54 @@
+<!--
+  RYSE — ESQUELETO DOS E-MAILS
+  ============================================================================
+  Este arquivo não vai para o painel. Ele documenta as decisões que os outros
+  templates repetem, para que uma alteração de identidade não vire arqueologia.
+
+  Cliente de e-mail não é navegador. As regras abaixo não são preferência:
+
+  1. TABELA, não flex/grid. Outlook para Windows renderiza com o motor do
+     Word, que ignora display:flex. Layout em <table> é o que funciona em
+     todos.
+
+  2. CSS INLINE. Gmail remove <style> em boa parte dos casos, e nenhum cliente
+     baixa folha externa. Cada regra vai no atributo style do elemento.
+
+  3. SEM SVG. Outlook e vários webmails não renderizam SVG. A marca do Ryse é
+     um quadrado laranja com barras ascendentes — reproduzida aqui com células
+     de tabela e bordas arredondadas, que sobrevivem em qualquer lugar e não
+     dependem de imagem externa ser baixada (Gmail bloqueia imagem por padrão
+     até o leitor autorizar).
+
+  4. LINK EM TEXTO, sempre. O botão pode não ser clicável em cliente de texto
+     puro, e alguns filtros corporativos removem <a> estilizado. A URL crua
+     aparece embaixo em todos os templates.
+
+  5. LARGURA 600px. Padrão histórico que cabe no painel de leitura do Outlook
+     sem barra horizontal.
+
+  CORES (espelham app/globals.css)
+    laranja da marca ...... #FF6A00
+    texto sobre laranja ... #0F0F0F
+    tinta / fundo escuro .. #0F0F0F
+    texto principal ....... #171717
+    texto secundário ...... #5C5C5C
+    linha ................. #E7E7E7
+    fundo ................. #FAFAFA
+
+  ONDE COLAR
+    Painel do Supabase › Authentication › Emails › Templates.
+    Um arquivo por aba; o assunto de cada um está no comentário do topo.
+
+  VARIÁVEIS DISPONÍVEIS
+    {{ .ConfirmationURL }}  link pronto (fluxo padrão)
+    {{ .Token }}            código de 6 dígitos
+    {{ .TokenHash }}        hash para montar URL própria
+    {{ .SiteURL }}          Site URL configurado no projeto
+    {{ .Email }}            destinatário
+
+  IMPORTANTE — REMETENTE
+    O nome que aparece como remetente NÃO vem daqui. Com o SMTP padrão do
+    Supabase, o e-mail sai de `noreply@mail.app.supabase.io` e assinado como
+    Supabase, por mais que o corpo diga Ryse. Trocar isso exige SMTP próprio:
+    Authentication › Emails › SMTP Settings. Ver supabase/emails/LEIA-ME.md.
+-->

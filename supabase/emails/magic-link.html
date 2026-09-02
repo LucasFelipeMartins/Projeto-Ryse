@@ -1,0 +1,119 @@
+<!--
+  Assunto sugerido:  Seu acesso ao Ryse
+  Painel:            Authentication › Emails › Magic Link
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAFAFA;margin:0;padding:32px 12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#FFFFFF;border:1px solid #E7E7E7;border-radius:18px;overflow:hidden;">
+
+        <!-- ============================================ cabeçalho / marca -->
+        <tr>
+          <td style="padding:32px 32px 0 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <!-- A marca é desenhada com células: barras ascendentes sobre
+                     o quadrado laranja. Não depende de imagem externa, que o
+                     Gmail bloqueia por padrão. -->
+                <td width="40" style="width:40px;">
+                  <table role="presentation" width="40" height="40" cellpadding="0" cellspacing="0" border="0" style="background-color:#FF6A00;border-radius:11px;">
+                    <tr>
+                      <td align="center" valign="bottom" style="padding:0 0 11px 0;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                          <tr valign="bottom">
+                            <td width="5" height="7" style="background-color:#0F0F0F;opacity:0.55;border-radius:3px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td width="3" style="font-size:0;line-height:0;">&nbsp;</td>
+                            <td width="5" height="12" style="background-color:#0F0F0F;opacity:0.8;border-radius:3px;font-size:0;line-height:0;">&nbsp;</td>
+                            <td width="3" style="font-size:0;line-height:0;">&nbsp;</td>
+                            <td width="5" height="18" style="background-color:#0F0F0F;border-radius:3px;font-size:0;line-height:0;">&nbsp;</td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="padding-left:12px;">
+                  <span style="font-size:17px;font-weight:700;letter-spacing:3px;color:#171717;text-transform:uppercase;">Ryse</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ==================================================== conteúdo -->
+        <tr>
+          <td style="padding:28px 32px 0 32px;">
+            <h1 style="margin:0;font-size:24px;line-height:1.25;font-weight:700;color:#171717;letter-spacing:-0.4px;">
+              Seu link de acesso
+            </h1>
+            <p style="margin:12px 0 0 0;font-size:15px;line-height:1.6;color:#5C5C5C;">
+              Toque no botão abaixo para entrar no Ryse. Não é preciso digitar
+              senha desta vez.
+            </p>
+          </td>
+        </tr>
+
+        <!-- ====================================================== botão -->
+        <tr>
+          <td style="padding:24px 32px 0 32px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td align="center" style="background-color:#FF6A00;border-radius:12px;">
+                  <a href="{{ .ConfirmationURL }}"
+                     style="display:block;padding:15px 24px;font-size:16px;font-weight:600;color:#0F0F0F;text-decoration:none;">
+                    Entrar no Ryse
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ============================================= link alternativo -->
+        <tr>
+          <td style="padding:20px 32px 0 32px;">
+            <p style="margin:0;font-size:13px;line-height:1.6;color:#5C5C5C;">
+              Se o botão não funcionar, copie e cole este endereço no navegador:
+            </p>
+            <p style="margin:8px 0 0 0;font-size:12px;line-height:1.5;word-break:break-all;">
+              <a href="{{ .ConfirmationURL }}" style="color:#C24A00;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+            </p>
+          </td>
+        </tr>
+
+        <!-- ======================================================= aviso -->
+        <tr>
+          <td style="padding:24px 32px 0 32px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFF4EC;border:1px solid #FFD9BF;border-radius:12px;">
+              <tr>
+                <td style="padding:14px 16px;">
+                  <p style="margin:0;font-size:13px;line-height:1.6;color:#5C5C5C;">
+                    O link vale por tempo limitado e serve uma única vez.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ====================================================== rodapé -->
+        <tr>
+          <td style="padding:28px 32px 32px 32px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="border-top:1px solid #E7E7E7;font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+            <p style="margin:18px 0 0 0;font-size:12px;line-height:1.6;color:#8A8A8A;">
+              Se não foi você que pediu, ignore esta mensagem — ninguém entra
+              sem abrir o link.
+            </p>
+            <p style="margin:12px 0 0 0;font-size:12px;line-height:1.6;color:#8A8A8A;">
+              Ryse · nutrição, treino e exames com acompanhamento clínico<br />
+              Seus dados de saúde são protegidos pela LGPD.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
