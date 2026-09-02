@@ -99,6 +99,46 @@ aceita várias entradas.
 
 ---
 
+## "Limite de envio atingido" — o que fazer
+
+O SMTP embutido tem um teto baixo de mensagens por hora (hoje, 2 em projetos
+novos) e não dá para levantá-lo: o campo `Authentication › Rate Limits ›
+Emails per hour` fica travado enquanto o projeto usar o serviço padrão.
+Configurar SMTP próprio é o que destrava aquele campo — não existe atalho.
+
+Enquanto isso não acontece, há dois desvios para continuar testando.
+
+### Desvio 1 — pelos comandos administrativos (preferível)
+
+Não mexe em configuração nenhuma e não afeta quem já usa o app:
+
+```bash
+node scripts/admin.mjs confirmar voce@email.com
+node scripts/admin.mjs senha voce@email.com NovaSenha123
+```
+
+O primeiro marca o e-mail como verificado, o segundo define a senha. Os dois
+usam a chave secreta, então rodam só na sua máquina.
+
+### Desvio 2 — desligar a confirmação por e-mail
+
+`Authentication › Providers › Email` → desligue **Confirm email**.
+
+Com isso, o cadastro para de enviar e-mail e a conta entra direto. Resolve o
+limite porque nenhuma mensagem é gerada.
+
+O custo é real e vale dizer com todas as letras: sem confirmação, ninguém
+prova que o endereço é de quem se cadastrou. Dá para criar conta com o e-mail
+de outra pessoa, e a recuperação de senha daquela conta passa a ser um
+caminho para invadi-la. **Isso é aceitável em ambiente de teste e não é
+aceitável em produção** — religue antes de abrir para clientes.
+
+O app funciona nos dois modos: quando a confirmação está desligada, `signUp`
+recebe sessão na hora e leva direto ao onboarding, sem passar pela tela de
+verificação.
+
+---
+
 ## Confirmação obrigatória de e-mail
 
 `Authentication › Providers › Email` → **Confirm email** precisa estar
