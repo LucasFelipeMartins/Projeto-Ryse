@@ -35,28 +35,78 @@ function checkPassword(password: string) {
 
 /**
  * Traduz os erros do Supabase, que chegam em inglês.
- * O fallback é genérico de propósito: não confirmamos se um e-mail existe.
+ *
+ * A correspondência é por PADRÃO, não por igualdade exata.
+ *
+ * A versão anterior usava um dicionário com a frase inteira como chave. Isso
+ * quebra em silêncio toda vez que o provedor reescreve a mensagem — e ele
+ * reescreve: "Email rate limit exceeded" já apareceu em caixa baixa e como
+ * "over_email_send_rate_limit". Quando a chave não casava, o usuário recebia
+ * o genérico "Não foi possível concluir", que não diz nada e manda tentar de
+ * novo justamente quando tentar de novo é o que não se deve fazer.
+ *
+ * O fallback também registra a mensagem original no log: sem isso, um erro
+ * novo do provedor fica invisível para sempre.
  */
-function translate(message: string) {
-  const map: Record<string, string> = {
-    'Invalid login credentials': 'E-mail ou senha incorretos.',
-    'Email not confirmed':
+function translate(message: string, contexto = 'auth') {
+  const regras: [RegExp, string][] = [
+    [/invalid login credentials/i, 'E-mail ou senha incorretos.'],
+    [
+      /email not confirmed|email_not_confirmed/i,
       'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.',
-    'Email link is invalid or has expired':
+    ],
+    [
+      /(email|token).*(invalid|expired)|expired.*token|otp_expired/i,
       'Esse link não é mais válido. Peça um novo.',
-    'Token has expired or is invalid':
-      'Esse link expirou. Peça um novo para continuar.',
-    'User already registered': 'Já existe uma conta com esse e-mail.',
-    'Password should be at least 6 characters.':
+    ],
+    [
+      /already registered|user_already_exists/i,
+      'Já existe uma conta com esse e-mail.',
+    ],
+    [
+      /password should be at least/i,
       `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`,
-    'New password should be different from the old password.':
+    ],
+    [
+      /should be different|same_password/i,
       'A nova senha precisa ser diferente da anterior.',
-    'Email rate limit exceeded':
-      'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
-    'For security purposes, you can only request this after 60 seconds.':
+    ],
+    /*
+      Limite de envio de e-mail.
+
+      O SMTP padrão do Supabase permite pouquíssimas mensagens por hora e é
+      destinado a desenvolvimento. Quem está testando cadastro e recuperação
+      bate nesse teto rápido, então a mensagem diz o que fazer em vez de
+      sugerir "tente novamente" — que só piora.
+    */
+    [
+      /rate limit|over_email_send_rate_limit|too many requests/i,
+      'Limite de envio de e-mails atingido. Aguarde alguns minutos. ' +
+        'Se isso se repetir, configure um SMTP próprio no Supabase — o padrão ' +
+        'permite poucos envios por hora.',
+    ],
+    [
+      /you can only request this after|security purposes/i,
       'Aguarde um minuto antes de pedir outro e-mail.',
-  };
-  return map[message] ?? 'Não foi possível concluir. Tente novamente.';
+    ],
+    [
+      /error sending|smtp|failed to send/i,
+      'Não conseguimos enviar o e-mail. Verifique a configuração de SMTP no Supabase.',
+    ],
+    [
+      /signups not allowed|signup_disabled/i,
+      'O cadastro está desativado no momento.',
+    ],
+  ];
+
+  for (const [padrao, texto] of regras) {
+    if (padrao.test(message)) return texto;
+  }
+
+  // Erro fora do catálogo: fica no log para não sumir.
+  console.error(`[${contexto}] erro não mapeado do Supabase:`, message);
+
+  return 'Não foi possível concluir. Tente novamente.';
 }
 
 /**
@@ -262,10 +312,20 @@ export async function requestPasswordReset(
     )}`,
   });
 
-  // Rate limit é o único erro que vale mostrar. Qualquer outro viraria um
-  // oráculo de "esse e-mail está cadastrado?".
-  if (error && error.message.toLowerCase().includes('rate limit')) {
-    return { error: translate(error.message), values: { email } };
+  /*
+    Falha de ENTREGA precisa aparecer; falha de identidade, não.
+
+    Dizer "enviamos o link" quando o envio falhou deixa a pessoa esperando um
+    e-mail que nunca vem. Mas revelar "esse e-mail não existe" transformaria a
+    tela num oráculo de quem tem conta aqui — então só erros sobre o envio em
+    si sobem para a interface.
+  */
+  if (error) {
+    console.error('[recuperar-senha] Supabase respondeu:', error.message);
+
+    if (/rate limit|too many|security purposes|smtp|error sending|failed to send/i.test(error.message)) {
+      return { error: translate(error.message, 'recuperar-senha'), values: { email } };
+    }
   }
 
   return {

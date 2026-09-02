@@ -2109,8 +2109,7 @@ create index if not exists profiles_admin_idx on profiles(id) where is_admin;
   no primeiro acesso o app exige a troca antes de liberar qualquer tela. Sem
   isso, a senha que circulou pelo WhatsApp continuaria válida para sempre.
 */
-alter table profiles
-  add column if not exists must_change_password boolean not null default false;
+alter table profiles add column if not exists must_change_password boolean not null default false;
 
 comment on column profiles.must_change_password is
   'Senha provisória em uso. Enquanto verdadeiro, o app só permite /definir-senha.';
