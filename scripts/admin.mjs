@@ -231,6 +231,75 @@ async function vincular(patientEmail, proEmail) {
 }
 
 /**
+ * Confirma o e-mail de uma conta sem enviar nada.
+ *
+ * O SMTP embutido do Supabase permite pouquíssimos envios por hora e existe
+ * só para desenvolvimento. Ao testar cadastro e recuperação, o teto é
+ * atingido rápido — e aí a conta fica presa esperando um e-mail que não vai
+ * sair, sem caminho de saída pela interface.
+ *
+ * Este comando marca o endereço como verificado direto pela API de admin. É
+ * a mesma coisa que clicar no link, sem passar pela caixa de entrada.
+ *
+ * Não substitui SMTP próprio em produção: lá o clique do usuário é o que
+ * prova que o endereço é dele. Aqui a prova é você ter acesso à chave
+ * secreta.
+ */
+async function confirmar(email) {
+  if (!email) fail('Uso: node scripts/admin.mjs confirmar voce@email.com');
+
+  const profile = await findByEmail(email);
+  if (!profile) fail(`Conta não encontrada: ${email}`);
+
+  const { error } = await db.auth.admin.updateUserById(profile.id, {
+    email_confirm: true,
+  });
+
+  if (error) fail(error.message);
+
+  ok(`E-mail de ${profile.full_name} confirmado. A conta já pode entrar.`);
+}
+
+/**
+ * Define a senha de qualquer conta, sem e-mail de recuperação.
+ *
+ * Existe pelo mesmo motivo de `confirmar`: quando o envio está bloqueado pelo
+ * limite, "esqueci minha senha" não é um caminho disponível. Com a chave
+ * secreta em mãos, trocar direto resolve.
+ *
+ * Para PROFISSIONAL, prefira a área /admin: lá a troca marca a senha como
+ * provisória e obriga a definição de uma nova no primeiro acesso. Este
+ * comando grava a senha como definitiva.
+ */
+async function senha(email, novaSenha) {
+  if (!email || !novaSenha) {
+    fail('Uso: node scripts/admin.mjs senha voce@email.com NovaSenha123');
+  }
+  if (novaSenha.length < 8) {
+    fail('A senha precisa ter pelo menos 8 caracteres.');
+  }
+
+  const profile = await findByEmail(email);
+  if (!profile) fail(`Conta não encontrada: ${email}`);
+
+  const { error } = await db.auth.admin.updateUserById(profile.id, {
+    password: novaSenha,
+    // Trocar a senha sem confirmar o e-mail deixaria o login barrado mesmo
+    // com a credencial certa.
+    email_confirm: true,
+  });
+
+  if (error) fail(error.message);
+
+  ok(`Senha de ${profile.full_name} redefinida.`);
+  console.log(
+    `\n  Entrar em ${profile.role === 'profissional' ? '/pro/entrar' : '/entrar'}\n` +
+      `    e-mail: ${profile.email}\n` +
+      `    senha:  ${novaSenha}\n`,
+  );
+}
+
+/**
  * Cria a conta do profissional, já confirmada, e vincula os pacientes
  * existentes a ela.
  *
@@ -339,6 +408,8 @@ const commands = {
   status,
   listar,
   admin,
+  confirmar,
+  senha,
   promover,
   vincular,
   'criar-profissional': criarProfissional,
@@ -353,6 +424,12 @@ Comandos disponíveis:
   admin     <email> [remover]     concede/remove acesso à área /admin
   promover  <email>               torna a conta um profissional
   vincular  <paciente> <medico>   liga um paciente ao profissional
+
+  Sem depender de e-mail (útil quando o SMTP padrão do Supabase
+  atinge o limite de envios por hora):
+
+  confirmar <email>               marca o e-mail como verificado
+  senha     <email> <nova-senha>  define a senha direto
 
   criar-profissional <email> [senha]
       cria a conta do profissional já confirmada, promove e vincula
