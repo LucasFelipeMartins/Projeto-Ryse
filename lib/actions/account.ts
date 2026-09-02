@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { createClient, getSessionUser, homeFor } from '@/lib/supabase/server';
-import { urlPublica } from '@/lib/url';
+import { urlPublicaOuNula } from '@/lib/url';
 import type { ActionResult } from '@/lib/types';
 
 /**
@@ -121,13 +121,23 @@ export async function reenviarConfirmacao(
 
   if (!email) return { error: 'Informe o e-mail usado no cadastro.' };
 
+  const base = urlPublicaOuNula(await headers());
+
+  if (!base) {
+    return {
+      error:
+        'O sistema não sabe o próprio endereço público, então o link chegaria ' +
+        'quebrado. Avise o suporte para configurar APP_URL no servidor.',
+    };
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase.auth.resend({
     type: 'signup',
     email,
     options: {
-      emailRedirectTo: `${urlPublica(await headers())}/auth/confirmar`,
+      emailRedirectTo: `${base}/auth/confirmar`,
     },
   });
 

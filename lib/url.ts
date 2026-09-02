@@ -35,18 +35,31 @@ export function hostDe(valor: string | undefined | null): string | null {
 /**
  * Origem configurada explicitamente, se houver e se fizer sentido.
  *
- * `NEXT_PUBLIC_SITE_URL` apontando para localhost é o resto de um `.env.local`
- * copiado para o servidor — situação comum ao trocar de hospedagem. Nesse
- * caso o valor é descartado em favor dos cabeçalhos, senão o app geraria
- * links de e-mail para a máquina de quem programou.
+ * A ordem dos candidatos não é arbitrária — o primeiro existe justamente
+ * porque o segundo tem uma armadilha:
  *
- * `RENDER_EXTERNAL_URL` é preenchido automaticamente pelo Render e serve de
- * rede de segurança quando ninguém configurou nada.
+ *   APP_URL              lida em tempo de EXECUÇÃO. Mudar no painel e
+ *                        reiniciar já vale.
+ *
+ *   NEXT_PUBLIC_SITE_URL o Next substitui `process.env.NEXT_PUBLIC_*` pelo
+ *                        valor LITERAL durante o build, inclusive no código
+ *                        de servidor. Se a build rodou sem ela (ou com
+ *                        localhost), alterá-la depois no painel não muda
+ *                        nada até um novo deploy. É a causa mais comum de
+ *                        "configurei e continua indo para localhost".
+ *
+ *   RENDER_EXTERNAL_*    preenchidas pelo Render, em tempo de execução.
+ *
+ * Valor apontando para localhost é descartado: é o resto de um `.env.local`
+ * copiado para o servidor, e gerar link de e-mail para a máquina de quem
+ * programou é pior do que não ter configuração nenhuma.
  */
 function origemConfigurada(): string | null {
   const candidatos = [
+    process.env.APP_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
     process.env.RENDER_EXTERNAL_URL,
+    process.env.RENDER_EXTERNAL_HOSTNAME,
   ];
 
   for (const bruto of candidatos) {
@@ -59,6 +72,9 @@ function origemConfigurada(): string | null {
 
   return null;
 }
+
+/** `true` quando o app roda fora da máquina de desenvolvimento. */
+const emProducao = () => process.env.NODE_ENV === 'production';
 
 /** Cabeçalhos aceitos, do mais específico ao mais genérico. */
 type LeitorDeHeader = { get(name: string): string | null };
@@ -122,12 +138,35 @@ export function origemParaRedirect(
  * cabeçalhos entram.
  */
 export function urlPublica(headers: LeitorDeHeader): string {
+  return urlPublicaOuNula(headers) ?? 'http://localhost:3000';
+}
+
+/**
+ * Igual a `urlPublica`, mas admite não saber.
+ *
+ * Existe porque cair no `http://localhost:3000` é aceitável para um link
+ * dentro do app (o navegador nunca chega a usá-lo) e **inaceitável** para um
+ * e-mail: a mensagem sai, chega, e o link leva a lugar nenhum — sem erro em
+ * lugar algum que explique o porquê. Quem monta e-mail usa esta função e
+ * trata o `null`.
+ */
+export function urlPublicaOuNula(headers: LeitorDeHeader): string | null {
   const configurada = origemConfigurada();
   if (configurada) return configurada;
 
   const dosHeaders = origemDosHeaders(headers);
   if (dosHeaders) return dosHeaders;
 
-  // Último recurso: desenvolvimento local sem nenhum cabeçalho útil.
+  if (emProducao()) {
+    console.error(
+      '[url] não foi possível determinar o endereço público do app. ' +
+        'Defina APP_URL (lida em tempo de execução) nas variáveis de ambiente. ' +
+        'Atenção: NEXT_PUBLIC_SITE_URL é fixada no build e não basta alterá-la ' +
+        'no painel sem um novo deploy.',
+    );
+    return null;
+  }
+
+  // Desenvolvimento local sem nenhum cabeçalho útil.
   return 'http://localhost:3000';
 }

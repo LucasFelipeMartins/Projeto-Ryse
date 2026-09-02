@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
-import { urlPublica } from '@/lib/url';
+import { urlPublicaOuNula } from '@/lib/url';
 import { ehRotaProfissional } from '@/lib/routes';
 
 export type AuthState = {
@@ -62,15 +62,19 @@ function translate(message: string) {
 /**
  * URL pública do app, para montar os links enviados por e-mail.
  *
- * A resolução mora em `lib/url.ts` porque a regra tem sutileza: um
- * `NEXT_PUBLIC_SITE_URL` apontando para localhost — sobra de um `.env.local`
- * copiado para o servidor ao trocar de hospedagem — é descartado em favor dos
- * cabeçalhos do proxy. Sem isso, o link de redefinição de senha chegaria ao
- * usuário apontando para a máquina de quem programou.
+ * Devolve `null` quando o endereço não pode ser determinado em produção. A
+ * resolução mora em `lib/url.ts`, e o `null` é intencional: mandar um e-mail
+ * com link para `localhost` é uma falha silenciosa — a mensagem sai, chega, e
+ * morre no clique, sem erro em lugar nenhum que explique o motivo. Melhor
+ * recusar o envio e dizer o que está faltando.
  */
-async function siteUrl() {
-  return urlPublica(await headers());
+async function siteUrl(): Promise<string | null> {
+  return urlPublicaOuNula(await headers());
 }
+
+const SEM_ENDERECO =
+  'O sistema não sabe o próprio endereço público, então o link do e-mail ' +
+  'chegaria quebrado. Avise o suporte para configurar APP_URL no servidor.';
 
 /* ---------------------------------------------------------------- ENTRAR --- */
 
@@ -199,6 +203,9 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
 
   if (password !== confirm) return { error: 'As senhas não conferem.', values };
 
+  const base = await siteUrl();
+  if (!base) return { error: SEM_ENDERECO, values };
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -206,7 +213,7 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
     options: {
       // Lido pelo trigger `handle_new_user` para preencher o perfil.
       data: { full_name: fullName },
-      emailRedirectTo: `${await siteUrl()}/auth/confirmar`,
+      emailRedirectTo: `${base}/auth/confirmar`,
     },
   });
 
@@ -245,9 +252,12 @@ export async function requestPasswordReset(
   const emailError = checkEmail(email);
   if (emailError) return { error: emailError, values: { email } };
 
+  const base = await siteUrl();
+  if (!base) return { error: SEM_ENDERECO, values: { email } };
+
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${await siteUrl()}/auth/callback?proximo=${encodeURIComponent(
+    redirectTo: `${base}/auth/callback?proximo=${encodeURIComponent(
       `/nova-senha?portal=${portal}`,
     )}`,
   });
@@ -291,6 +301,19 @@ export async function updatePassword(
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: translate(error.message) };
+
+  /*
+    Redefinir a senha também encerra a exigência de troca.
+
+    Sem isto, um profissional que perdeu a senha provisória e usou
+    "esqueci minha senha" definiria a senha nova e mesmo assim continuaria
+    preso em /definir-senha — a bandeira seguiria ligada, exigindo trocar de
+    novo uma senha que ele acabou de escolher.
+
+    A função é SECURITY DEFINER porque a coluna é protegida; chamá-la para
+    quem não tinha a exigência é inofensivo (o UPDATE não casa nenhuma linha).
+  */
+  await supabase.rpc('finish_password_setup');
 
   revalidatePath('/', 'layout');
   redirect('/');

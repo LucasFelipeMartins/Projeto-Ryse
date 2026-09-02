@@ -23,6 +23,7 @@ import {
 import { Badge, Button, Card, PageIntro, SectionTitle } from '@/components/ui';
 import { Field, Input, Sheet, Textarea, ThemePicker } from '@/components/ui/interactive';
 import { AvatarUploader } from '@/components/features/avatar-uploader';
+import { SegurancaCard } from '@/components/features/seguranca-card';
 import { SignOutButton } from '@/components/layout/app-shell';
 import { registrarPeso } from '@/lib/actions/patient';
 import { atualizarPerfil } from '@/lib/actions/profile';
@@ -219,6 +220,8 @@ export function PerfilView({
           </Link>
         </Card>
       </section>
+
+      <SegurancaCard />
 
       {/* ------------------------------------------------ aparência */}
       <section>

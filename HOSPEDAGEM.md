@@ -56,10 +56,23 @@ ela é a única fonte que não pode ser forjada por cabeçalho.
 NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 
-# O endereço público. Sem isto o app cai em RENDER_EXTERNAL_URL,
-# que o Render preenche sozinho — mas com domínio próprio, defina aqui.
-NEXT_PUBLIC_SITE_URL=https://ryse.onrender.com
+# O endereço público. Use APP_URL, não NEXT_PUBLIC_SITE_URL — veja abaixo.
+APP_URL=https://ryse.onrender.com
 ```
+
+### Por que APP_URL e não NEXT_PUBLIC_SITE_URL
+
+O Next substitui `process.env.NEXT_PUBLIC_*` pelo valor **literal** durante o
+build, inclusive no código de servidor. Se a build rodou sem a variável — ou
+com o `http://localhost:3000` herdado do `.env.local` —, o valor fica gravado
+no bundle. Alterá-la depois no painel do Render **não muda nada** até um novo
+deploy.
+
+Esse é o motivo mais comum de "configurei e o e-mail continua indo para
+localhost".
+
+`APP_URL` não leva o prefixo, então é lida em tempo de execução: definir e
+reiniciar já resolve. O app aceita as duas, com `APP_URL` tendo prioridade.
 
 Opcionais, conforme o que você for usar:
 
@@ -123,7 +136,24 @@ location: https://ryse.onrender.com/entrar?proximo=%2Finicio
 ```
 
 Se aparecer `localhost` ou um IP interno, o proxy não está enviando
-`X-Forwarded-Host` — nesse caso, defina `NEXT_PUBLIC_SITE_URL` explicitamente.
+`X-Forwarded-Host` — nesse caso, defina `APP_URL` explicitamente.
+
+### Links de e-mail
+
+Redirecionamento dentro do app e link de e-mail são caminhos diferentes: o
+primeiro é relativo e se resolve sozinho, o segundo precisa de uma URL
+absoluta e correta.
+
+Quando o app não consegue determinar o próprio endereço em produção, ele
+**recusa o envio** com uma mensagem clara, em vez de mandar um e-mail cujo
+link morre no clique. O log do servidor traz a linha `[url] não foi possível
+determinar o endereço público`.
+
+Mas há um segundo portão, e ele é do Supabase: o `redirect_to` que o app envia
+é validado contra a lista de **Redirect URLs** do projeto. Se não estiver lá,
+o Supabase ignora e usa o **Site URL** dele. Ou seja: com o Site URL apontando
+para localhost no painel, o link vai para localhost por mais correto que o app
+esteja. As duas configurações precisam bater.
 
 ---
 

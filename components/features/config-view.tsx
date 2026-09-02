@@ -17,6 +17,7 @@ import { Badge, Button, Card, PageIntro, SectionTitle } from '@/components/ui';
 import { Field, Input, ThemePicker } from '@/components/ui/interactive';
 import { AvatarUploader } from '@/components/features/avatar-uploader';
 import { NotificationPrefsCard } from '@/components/features/notification-prefs';
+import { SegurancaCard } from '@/components/features/seguranca-card';
 import { PushManager } from '@/components/features/push-manager';
 import { SignOutButton } from '@/components/layout/app-shell';
 import { atualizarPerfil } from '@/lib/actions/profile';
@@ -69,6 +70,8 @@ export function ConfigView({
         do fluxo do paciente — não fazem sentido no painel de quem prescreve.
       */}
       <NotificationPrefsCard initial={prefs} showClinical={false} />
+
+      <SegurancaCard />
 
       <section>
         <SectionTitle title="Aparência" hint="Vale para este navegador." />
