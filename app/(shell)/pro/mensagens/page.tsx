@@ -23,6 +23,7 @@ export default async function ProMensagensPage({
       conversations={conversations}
       activeId={activeId}
       messages={messages}
+      viewerId={pro.id}
     />
   );
 }

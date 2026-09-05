@@ -80,9 +80,13 @@ const TABELAS = [
   { nome: 'notifications', migration: '005_plataforma' },
 ];
 
+/** Códigos que significam "esta função não existe". */
+const FUNCAO_AUSENTE = ['42883', 'PGRST202'];
+
 const FUNCOES = [
   { nome: 'list_professionals', args: {}, migration: '004_escolha' },
   { nome: 'is_admin', args: {}, migration: '006_admin' },
+  { nome: 'realtime_tables', args: {}, migration: '007_realtime' },
   { nome: 'checkin_pending', args: { target_patient: ZERO() }, migration: '005_plataforma' },
   { nome: 'current_week_start', args: { target_profile: ZERO() }, migration: '005_plataforma' },
   { nome: 'latest_weight_kg', args: { target_patient: ZERO() }, migration: '005_plataforma' },
@@ -162,9 +166,9 @@ console.log('\nFunções:');
 for (const { nome, args, migration } of FUNCOES) {
   const { error } = await db.rpc(nome, args);
 
-  // 42883 = função inexistente. Qualquer outro erro (permissão, argumento)
-  // já prova que ela está lá.
-  if (!error || error.code !== '42883') {
+  // Qualquer outro erro (permissão, argumento inválido) já prova que a
+  // função está lá — e é isso que se quer saber aqui.
+  if (!error || !FUNCAO_AUSENTE.includes(error.code)) {
     ok(`${nome}()`);
   } else {
     falha(`${nome}() (migration ${migration})`);
@@ -172,7 +176,57 @@ for (const { nome, args, migration } of FUNCOES) {
   }
 }
 
-/* 4. buckets ------------------------------------------------------------ */
+/* 4. tempo real --------------------------------------------------------- */
+
+/*
+  Tabela fora da publicação é a falha mais silenciosa do conjunto: o canal
+  conecta, reporta "inscrito", nenhum erro aparece — e o evento nunca chega.
+  Do lado do usuário isso é idêntico a "ninguém escreveu nada".
+*/
+console.log('\nTempo real:');
+{
+  const { data, error } = await db.rpc('realtime_tables');
+
+  if (error) {
+    if (FUNCAO_AUSENTE.includes(error.code)) {
+      falha('realtime_tables() não existe (migration 007_realtime)');
+      problemas.push(
+        'Rode supabase/migrations/20260101000007_realtime.sql — sem ela, ' +
+          'o chat não atualiza sozinho.',
+      );
+    } else {
+      console.log(`  \x1b[33m—\x1b[0m não foi possível verificar (${error.message})`);
+    }
+  } else {
+    const publicadas = new Set((data ?? []).map((r) => r.tabela ?? r));
+
+    // `messages` é a que o chat depende; as demais alimentam as telas de
+    // acompanhamento.
+    const esperadas = [
+      'messages',
+      'conversations',
+      'body_metrics',
+      'hydration_logs',
+      'checkins',
+      'ai_outputs',
+      'notifications',
+    ];
+
+    const ausentes = esperadas.filter((t) => !publicadas.has(t));
+
+    if (ausentes.length === 0) {
+      ok(`${publicadas.size} tabela(s) publicada(s)`);
+    } else {
+      falha(`fora da publicação: ${ausentes.join(', ')}`);
+      problemas.push(
+        `Tabelas sem tempo real (${ausentes.join(', ')}) — rode ` +
+          'supabase/migrations/20260101000007_realtime.sql.',
+      );
+    }
+  }
+}
+
+/* 5. buckets ------------------------------------------------------------ */
 
 console.log('\nStorage:');
 {
@@ -193,7 +247,7 @@ console.log('\nStorage:');
   }
 }
 
-/* 5. perfis órfãos ------------------------------------------------------ */
+/* 6. perfis órfãos ------------------------------------------------------ */
 
 if (usandoChaveSecreta) {
   console.log('\nContas:');
@@ -222,6 +276,7 @@ console.log(
 );
 console.log('  supabase/migrations/20260101000005_plataforma.sql');
 console.log('  supabase/migrations/20260101000006_admin_e_acesso.sql');
+console.log('  supabase/migrations/20260101000007_realtime.sql');
 console.log('(a migration é idempotente — rodar de novo não causa dano)\n');
 
 process.exit(1);

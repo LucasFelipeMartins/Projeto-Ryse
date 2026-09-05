@@ -16,6 +16,11 @@ import {
 import { Avatar, Badge, Card, EmptyState } from '@/components/ui';
 import { Input } from '@/components/ui/interactive';
 import { markConversationRead, sendMessage } from '@/lib/actions/chat';
+import {
+  useMensagens,
+  useRealtimeInbox,
+  useRealtimeMessages,
+} from '@/components/features/chat-realtime';
 import type { ConversationView, MessageView } from '@/lib/queries/chat';
 import { cn, dayLabel, messageClock } from '@/lib/utils';
 
@@ -173,6 +178,7 @@ function Composer({
 
 function Conversation({
   conversationId,
+  viewerId,
   peerName,
   peerMeta,
   peerAvatarUrl,
@@ -182,6 +188,8 @@ function Conversation({
   header,
 }: {
   conversationId: string;
+  /** Quem está lendo — decide o lado da bolha nas mensagens do canal. */
+  viewerId: string;
   peerName: string;
   peerMeta: string;
   peerAvatarUrl?: string | null;
@@ -194,9 +202,26 @@ function Conversation({
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
+  /*
+    Escuta do outro lado da conversa.
+
+    O `router.refresh()` do envio só atualiza quem enviou; sem isto, a resposta
+    do interlocutor só apareceria ao recarregar a página.
+  */
+  const { extras, registrarEnvio, conectado } = useRealtimeMessages({
+    conversationId,
+    viewerId,
+    onMensagemRecebida: () => {
+      // Chegou com a conversa aberta: já nasce lida.
+      void markConversationRead(conversationId);
+    },
+  });
+
+  const historico = useMensagens(messages, extras);
+
   // A bolha aparece antes de o servidor responder.
   const [optimistic, addOptimistic] = useOptimistic(
-    messages,
+    historico,
     (current: MessageView[], text: string) => [
       ...current,
       {
@@ -221,9 +246,18 @@ function Conversation({
 
   const send = (text: string) => {
     startTransition(async () => {
+      // Sinaliza o envio para o canal ignorar o eco da própria mensagem —
+      // ela já chega pela bolha otimista e pelo refresh.
+      const concluir = registrarEnvio();
+
       addOptimistic(text);
-      await sendMessage(conversationId, text);
-      router.refresh();
+
+      try {
+        await sendMessage(conversationId, text);
+        router.refresh();
+      } finally {
+        concluir();
+      }
     });
   };
 
@@ -242,7 +276,21 @@ function Conversation({
         <Avatar name={peerName} src={peerAvatarUrl} size="sm" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-bold">{peerName}</h2>
-          <p className="truncate text-2xs text-muted">{peerMeta}</p>
+          <p className="flex items-center gap-1.5 truncate text-2xs text-muted">
+            {/*
+              Ponto de conexão: sem ele, uma escuta caída é indistinguível de
+              "ninguém escreveu nada" — e a pessoa fica esperando resposta que
+              já chegou ao banco.
+            */}
+            <span
+              className={cn(
+                'h-1.5 w-1.5 shrink-0 rounded-full',
+                conectado ? 'bg-success' : 'bg-subtle',
+              )}
+              aria-hidden
+            />
+            {conectado ? peerMeta : `${peerMeta} · reconectando…`}
+          </p>
         </div>
         {header}
       </div>
@@ -289,6 +337,7 @@ function Conversation({
 
 export function PatientChatView({
   conversation,
+  viewerId,
 }: {
   conversation: {
     id: string;
@@ -297,11 +346,13 @@ export function PatientChatView({
     peerAvatarUrl: string | null;
     messages: MessageView[];
   };
+  viewerId: string;
 }) {
   return (
     <Card inset className="h-pane overflow-hidden">
       <Conversation
         conversationId={conversation.id}
+        viewerId={viewerId}
         peerName={conversation.peerName}
         peerMeta={conversation.peerMeta}
         peerAvatarUrl={conversation.peerAvatarUrl}
@@ -322,14 +373,25 @@ export function ProInboxView({
   conversations,
   activeId,
   messages,
+  viewerId,
 }: {
   conversations: ConversationView[];
   activeId: string | null;
   messages: MessageView[];
+  viewerId: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  /*
+    Mantém a LISTA viva: prévia, horário e não lidas de qualquer conversa.
+
+    Fica antes do retorno antecipado abaixo porque hook não pode ser
+    condicional — e a caixa vazia também precisa reagir, já que a primeira
+    mensagem de um paciente novo é justamente o que a faz deixar de ser vazia.
+  */
+  useRealtimeInbox(true);
 
   if (conversations.length === 0) {
     return (
@@ -438,6 +500,7 @@ export function ProInboxView({
       <div className={cn('h-full min-h-0', selected === null && 'hidden lg:block')}>
         <Conversation
           conversationId={active.id}
+          viewerId={viewerId}
           peerName={active.peerName}
           peerMeta={active.peerMeta}
           peerAvatarUrl={active.peerAvatarUrl}

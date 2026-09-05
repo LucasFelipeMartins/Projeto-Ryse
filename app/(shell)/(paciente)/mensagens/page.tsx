@@ -25,5 +25,5 @@ export default async function MensagensPage() {
     );
   }
 
-  return <PatientChatView conversation={conversation} />;
+  return <PatientChatView conversation={conversation} viewerId={user.id} />;
 }
